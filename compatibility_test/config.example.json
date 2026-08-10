@@ -1,0 +1,5 @@
+{
+  "test_recipient": "your.name@company.example",
+  "display_name": "Compatibility Tester",
+  "open_outlook_draft_after_create": true
+}

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LocalMailMerge.Core\LocalMailMerge.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\samples\outreach_package.sample.json" Link="samples\outreach_package.sample.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\templates\company_signature.sample.html" Link="templates\company_signature.sample.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

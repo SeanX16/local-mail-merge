@@ -1,0 +1,20 @@
+{
+  "checks": {
+    "fieldManagerOpened": true,
+    "fieldVisibilityChanged": true,
+    "fieldManagerClosed": true,
+    "filterOpened": true,
+    "filterApplied": true,
+    "rowDrivesPreview": true,
+    "templateDropdownPopulated": true,
+    "settingsOpened": true,
+    "outlookSettingsAvailable": true,
+    "safetySettingsAvailable": true,
+    "settingsClosed": true,
+    "blockReasonVisible": true,
+    "draftConfirmationOpened": true,
+    "draftConfirmationClosed": true
+  },
+  "passed": true,
+  "consoleErrors": []
+}

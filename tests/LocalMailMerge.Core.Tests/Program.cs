@@ -1,0 +1,197 @@
+using System.IO.Compression;
+using System.Text;
+using LocalMailMerge.Core;
+
+var tests = new (string Name, Func<Task> Run)[]
+{
+    ("JSON 交接包保留任意字段", TestJsonImportAsync),
+    ("校验门禁区分可创建和拦截记录", TestValidationAsync),
+    ("内容哈希不一致继续硬拦截", TestHashMismatchAsync),
+    ("历史成功记录触发重复保护", TestAuditDeduplicationAsync),
+    ("CSV 导入保留动态字段", TestCsvImportAsync),
+    ("XLSX 自动选择人员明细工作表", TestXlsxImportAsync)
+};
+
+var passed = 0;
+foreach (var test in tests)
+{
+    try
+    {
+        await test.Run();
+        Console.WriteLine($"PASS  {test.Name}");
+        passed++;
+    }
+    catch (Exception exception)
+    {
+        Console.Error.WriteLine($"FAIL  {test.Name}\n      {exception.Message}");
+    }
+}
+
+Console.WriteLine($"\n{passed}/{tests.Length} tests passed.");
+return passed == tests.Length ? 0 : 1;
+
+static async Task TestJsonImportAsync()
+{
+    var importer = new PackageImporter();
+    var sample = Path.Combine(AppContext.BaseDirectory, "samples", "outreach_package.sample.json");
+    var batch = await importer.ImportAsync(sample);
+    Equal(12, batch.Messages.Count, "message count");
+    True(batch.Fields.Any(field => field.Key.Equals("organization", StringComparison.OrdinalIgnoreCase)), "organization field missing");
+    True(batch.Fields.Any(field => field.Key.Equals("paper_title", StringComparison.OrdinalIgnoreCase)), "paper_title field missing");
+    Equal("Example University", batch.Messages[0].Fields["organization"], "arbitrary field value");
+}
+
+static async Task TestValidationAsync()
+{
+    var importer = new PackageImporter();
+    var sample = Path.Combine(AppContext.BaseDirectory, "samples", "outreach_package.sample.json");
+    var batch = await importer.ImportAsync(sample);
+    new ValidationService().Validate(batch, new HashSet<string>());
+    Equal(7, batch.Messages.Count(message => message.Validation.State == ValidationState.Eligible), "eligible count");
+    Equal(3, batch.Messages.Count(message => message.Validation.State == ValidationState.NeedsReview), "warning count");
+    Equal(2, batch.Messages.Count(message => message.Validation.State == ValidationState.Blocked), "blocked count");
+    True(batch.Messages.All(message => message.DeclaredContentHash.Equals(message.ComputedContentHash, StringComparison.OrdinalIgnoreCase)), "sample hash mismatch");
+    var placeholder = batch.Messages.Single(message => message.PersonId == "demo_laura_garcia");
+    Equal(ValidationState.NeedsReview, placeholder.Validation.State, "placeholder warning state");
+    True(placeholder.Validation.CanCreate, "placeholder warning should allow draft creation");
+    True(placeholder.Validation.Issues.Any(issue => issue.Code == "unresolved_placeholder" && issue.Severity == ValidationIssueSeverity.Warning), "placeholder warning missing");
+    var doNotContact = batch.Messages.Single(message => message.PersonId == "demo_jessica_taylor");
+    Equal(ValidationState.Blocked, doNotContact.Validation.State, "do_not_contact state");
+    True(!doNotContact.Validation.CanCreate, "do_not_contact should block draft creation");
+    True(doNotContact.Validation.Issues.Any(issue => issue.Code == "do_not_contact" && issue.Severity == ValidationIssueSeverity.Blocking), "do_not_contact blocker missing");
+}
+
+static async Task TestHashMismatchAsync()
+{
+    var source = Path.Combine(AppContext.BaseDirectory, "samples", "outreach_package.sample.json");
+    var path = Path.Combine(AppContext.BaseDirectory, "hash-mismatch.json");
+    var json = await File.ReadAllTextAsync(source, Encoding.UTF8);
+    await File.WriteAllTextAsync(path, json.Replace(
+        "Research opportunity related to your rendering work",
+        "Changed subject after approval",
+        StringComparison.Ordinal), Encoding.UTF8);
+    var batch = await new PackageImporter().ImportAsync(path);
+    new ValidationService().Validate(batch, new HashSet<string>());
+    var changed = batch.Messages.Single(message => message.PersonId == "demo_james_anderson");
+    Equal(ValidationState.Blocked, changed.Validation.State, "hash mismatch state");
+    True(!changed.Validation.CanCreate, "hash mismatch should block draft creation");
+    True(changed.Validation.Issues.Any(issue => issue.Code == "content_hash_mismatch" && issue.Severity == ValidationIssueSeverity.Blocking), "hash mismatch blocker missing");
+    File.Delete(path);
+}
+
+static async Task TestAuditDeduplicationAsync()
+{
+    var testDirectory = Path.Combine(AppContext.BaseDirectory, "audit-test");
+    if (Directory.Exists(testDirectory)) Directory.Delete(testDirectory, recursive: true);
+    var store = new AuditStore(testDirectory);
+    var importer = new PackageImporter();
+    var sample = Path.Combine(AppContext.BaseDirectory, "samples", "outreach_package.sample.json");
+    var batch = await importer.ImportAsync(sample);
+    var message = batch.Messages[0];
+    message.ComputedContentHash = ContentHasher.Compute(message);
+    await store.AppendAsync(new AuditEntry(batch.BatchId, message.PersonId, message.ComputedContentHash, "demo-entry-id", DateTimeOffset.Now, "Success", string.Empty, string.Empty));
+    new ValidationService().Validate(batch, store.LoadSuccessfulKeys());
+    Equal(ValidationState.Duplicate, message.Validation.State, "duplicate state");
+    Directory.Delete(testDirectory, recursive: true);
+}
+
+static async Task TestCsvImportAsync()
+{
+    var path = Path.Combine(AppContext.BaseDirectory, "dynamic-fields.csv");
+    await File.WriteAllTextAsync(path, "person_id,recipient_name,recipient_email,custom_score\nexample_1,Example Person,example.person@example.test,92\n", Encoding.UTF8);
+    var batch = await new PackageImporter().ImportAsync(path);
+    Equal(1, batch.Messages.Count, "CSV message count");
+    Equal("92", batch.Messages[0].Fields["custom_score"], "CSV custom field");
+    File.Delete(path);
+}
+
+static async Task TestXlsxImportAsync()
+{
+    var path = Path.Combine(AppContext.BaseDirectory, "dynamic-fields.xlsx");
+    CreateMinimalXlsx(path);
+    var importer = new PackageImporter();
+    var inspection = await importer.InspectXlsxAsync(path);
+    Equal("Talent List", inspection.RecommendedWorksheetName, "recommended worksheet");
+    Equal(2, inspection.Sheets.Count, "worksheet count");
+    Equal(3, inspection.Sheets.Single(sheet => sheet.Name == "Talent List").SuggestedHeaderRowNumber, "suggested header row");
+    var batch = await importer.ImportAsync(path, new XlsxImportOptions("Talent List", 3));
+    Equal(1, batch.Messages.Count, "XLSX message count");
+    Equal("Example Person", batch.Messages[0].RecipientName, "XLSX name");
+    Equal("example.person@example.test", batch.Messages[0].RecipientEmail, "XLSX email");
+    Equal("Postdoc", batch.Messages[0].TargetRole, "XLSX role alias");
+    Equal("Graphics", batch.Messages[0].Fields["custom_track"], "XLSX dynamic field");
+    new ValidationService().Validate(batch, new HashSet<string>());
+    Equal(ValidationState.NeedsReview, batch.Messages[0].Validation.State, "generic XLSX validation state");
+    True(batch.Messages[0].Validation.CanCreate, "generic XLSX warning should allow draft creation");
+    True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "missing_subject"), "generic XLSX missing-subject reason");
+    True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "review_not_approved"), "generic XLSX approval reason");
+    File.Delete(path);
+}
+
+static void CreateMinimalXlsx(string path)
+{
+    if (File.Exists(path)) File.Delete(path);
+    using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+    WriteEntry(archive, "[Content_Types].xml", """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+          <Default Extension="xml" ContentType="application/xml"/>
+          <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+          <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+          <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+        </Types>
+        """);
+    WriteEntry(archive, "xl/workbook.xml", """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+          <sheets>
+            <sheet name="Summary" sheetId="1" r:id="rId1"/>
+            <sheet name="Talent List" sheetId="2" r:id="rId2"/>
+          </sheets>
+        </workbook>
+        """);
+    WriteEntry(archive, "xl/_rels/workbook.xml.rels", """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+          <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+        </Relationships>
+        """);
+    WriteEntry(archive, "xl/worksheets/sheet1.xml", """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>
+          <row r="1"><c r="A1" t="inlineStr"><is><t>Research Talent Summary</t></is></c></row>
+          <row r="3"><c r="A3" t="inlineStr"><is><t>Metric</t></is></c><c r="B3" t="inlineStr"><is><t>Value</t></is></c></row>
+          <row r="4"><c r="A4" t="inlineStr"><is><t>Total records</t></is></c><c r="B4"><v>1</v></c></row>
+        </sheetData></worksheet>
+        """);
+    WriteEntry(archive, "xl/worksheets/sheet2.xml", """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>
+          <row r="1"><c r="A1" t="inlineStr"><is><t>University Research Talent</t></is></c></row>
+          <row r="3"><c r="A3" t="inlineStr"><is><t>Person ID</t></is></c><c r="B3" t="inlineStr"><is><t>Full Name</t></is></c><c r="C3" t="inlineStr"><is><t>Email</t></is></c><c r="D3" t="inlineStr"><is><t>Organization</t></is></c><c r="E3" t="inlineStr"><is><t>Job Category</t></is></c><c r="F3" t="inlineStr"><is><t>Primary Source URL</t></is></c><c r="G3" t="inlineStr"><is><t>custom_track</t></is></c></row>
+          <row r="4"><c r="A4" t="inlineStr"><is><t>person_1</t></is></c><c r="B4" t="inlineStr"><is><t>Example Person</t></is></c><c r="C4" t="inlineStr"><is><t>example.person@example.test</t></is></c><c r="D4" t="inlineStr"><is><t>Example University</t></is></c><c r="E4" t="inlineStr"><is><t>Postdoc</t></is></c><c r="F4" t="inlineStr"><is><t>https://example.test/person</t></is></c><c r="G4" t="inlineStr"><is><t>Graphics</t></is></c></row>
+        </sheetData></worksheet>
+        """);
+}
+
+static void WriteEntry(ZipArchive archive, string name, string content)
+{
+    var entry = archive.CreateEntry(name);
+    using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+    writer.Write(content);
+}
+
+static void True(bool condition, string message)
+{
+    if (!condition) throw new InvalidOperationException(message);
+}
+
+static void Equal<T>(T expected, T actual, string label)
+{
+    if (!EqualityComparer<T>.Default.Equals(expected, actual))
+    {
+        throw new InvalidOperationException($"{label}: expected {expected}, actual {actual}");
+    }
+}

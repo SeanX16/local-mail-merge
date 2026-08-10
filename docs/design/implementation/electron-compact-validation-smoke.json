@@ -1,0 +1,26 @@
+{
+  "checks": {
+    "fieldManagerOpened": true,
+    "fieldVisibilityChanged": true,
+    "fieldManagerClosed": true,
+    "filterOpened": true,
+    "filterApplied": true,
+    "warningSelectable": true,
+    "warningSelected": true,
+    "rowDrivesPreview": true,
+    "warningBannerVisible": true,
+    "templateDropdownPopulated": true,
+    "settingsOpened": true,
+    "outlookSettingsAvailable": true,
+    "safetySettingsAvailable": true,
+    "settingsClosed": true,
+    "filterCleared": true,
+    "blockedNotSelectable": true,
+    "blockReasonVisible": true,
+    "draftConfirmationOpened": true,
+    "warningSummarizedBeforeCreate": true,
+    "draftConfirmationClosed": true
+  },
+  "passed": true,
+  "consoleErrors": []
+}

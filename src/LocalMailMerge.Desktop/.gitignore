@@ -1,0 +1,6 @@
+node_modules/
+dist-renderer/
+dist-electron/
+.vite/
+out/
+npm-debug.log*

@@ -1,0 +1,16 @@
+{
+  "checks": {
+    "dialogOpened": true,
+    "recommendedSelection": true,
+    "allSheetsListed": true,
+    "previewVisible": true,
+    "sheetChanged": true,
+    "headerSuggested": true,
+    "previewUpdated": true,
+    "headerChanged": true,
+    "manualHeaderPreviewUpdated": true,
+    "dialogClosed": true
+  },
+  "passed": true,
+  "consoleErrors": []
+}

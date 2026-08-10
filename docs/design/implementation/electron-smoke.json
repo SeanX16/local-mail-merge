@@ -1,0 +1,14 @@
+{
+  "checks": {
+    "fieldManagerOpened": true,
+    "fieldVisibilityChanged": true,
+    "fieldManagerClosed": true,
+    "filterOpened": true,
+    "filterApplied": true,
+    "rowDrivesPreview": true,
+    "draftConfirmationOpened": true,
+    "draftConfirmationClosed": true
+  },
+  "passed": true,
+  "consoleErrors": []
+}
