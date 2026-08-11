@@ -22,6 +22,7 @@ import {
 } from '@tanstack/react-table';
 import DOMPurify from 'dompurify';
 import {
+  Add20Regular,
   ArrowSort16Regular,
   Checkmark16Regular,
   CheckmarkCircle24Regular,
@@ -45,7 +46,7 @@ import {
 } from '@fluentui/react-icons';
 import { demoBatch } from './demoData';
 import { ExcelImportDialog } from './ExcelImportDialog';
-import { SettingsDialog } from './SettingsDialog';
+import { SettingsDialog, type SettingsTab } from './SettingsDialog';
 import type {
   BatchViewModel,
   FieldDefinition,
@@ -62,6 +63,134 @@ interface AnchorPosition {
   left: number;
   top: number;
   width: number;
+}
+
+interface CommandDropdownOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+function MiddleEllipsisPath({ value }: { value: string }) {
+  const slashIndex = Math.max(value.lastIndexOf('\\'), value.lastIndexOf('/'));
+  const directory = slashIndex >= 0 ? value.slice(0, slashIndex) : '';
+  const separator = slashIndex >= 0 ? value[slashIndex] : '';
+  const fileName = slashIndex >= 0 ? value.slice(slashIndex + 1) : value;
+
+  return (
+    <span className="path-copy">
+      {directory ? <span className="path-directory">{directory}</span> : null}
+      {separator ? <span className="path-separator">{separator}</span> : null}
+      <span className="path-filename">{fileName}</span>
+    </span>
+  );
+}
+
+function CommandDropdown({
+  id,
+  value,
+  placeholder,
+  options,
+  disabled = false,
+  defaultOpen = false,
+  kind,
+  onChange,
+  action
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  options: CommandDropdownOption[];
+  disabled?: boolean;
+  defaultOpen?: boolean;
+  kind: 'account' | 'signature';
+  onChange: (id: string) => void;
+  action?: { label: string; onSelect: () => void };
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((option) => option.id === value);
+
+  useEffect(() => {
+    function closeFromOutside(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function closeFromEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('pointerdown', closeFromOutside);
+    document.addEventListener('keydown', closeFromEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeFromOutside);
+      document.removeEventListener('keydown', closeFromEscape);
+    };
+  }, []);
+
+  return (
+    <div ref={rootRef} className={`command-dropdown command-dropdown--${kind} ${open ? 'is-open' : ''}`}>
+      <button
+        id={id}
+        type="button"
+        className="command-dropdown__trigger"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        data-testid={`${kind}-dropdown-trigger`}
+      >
+        <span>{selected?.label ?? placeholder}</span>
+        <ChevronDown16Regular aria-hidden="true" />
+      </button>
+      {open && !disabled ? (
+        <div className="command-dropdown__menu" role="listbox" aria-label={kind === 'account' ? '选择 Outlook 账户' : '选择邮件签名'} data-testid={`${kind}-dropdown-menu`}>
+          <div className="command-dropdown__options">
+            {options.map((option) => (
+              <button
+                type="button"
+                className={`command-dropdown__option ${option.id === value ? 'is-selected' : ''}`}
+                key={option.id}
+                role="option"
+                aria-selected={option.id === value}
+                data-testid={`${kind}-dropdown-option`}
+                onClick={() => {
+                  onChange(option.id);
+                  setOpen(false);
+                }}
+              >
+                <span className="command-dropdown__check">{option.id === value ? <Checkmark16Regular aria-hidden="true" /> : null}</span>
+                <span className="command-dropdown__option-copy">
+                  <strong>{option.label}</strong>
+                  {option.description && option.description !== option.label ? <small>{option.description}</small> : null}
+                </span>
+              </button>
+            ))}
+          </div>
+          {action ? (
+            <div className="command-dropdown__action-wrap">
+              <button
+                type="button"
+                className="command-dropdown__action"
+                data-testid={`${kind}-dropdown-action`}
+                onClick={() => {
+                  setOpen(false);
+                  action.onSelect();
+                }}
+              >
+                <Add20Regular aria-hidden="true" />
+                <span>{action.label}</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 const fallbackAccount: OutlookAccount = {
@@ -380,14 +509,19 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [pendingXlsxImport, setPendingXlsxImport] = useState<{ filePath: string; inspection: XlsxWorkbookInspection } | null>(null);
   const fieldManagerButtonRef = useRef<HTMLButtonElement>(null);
   const referenceState = new URLSearchParams(window.location.search).get('referenceState') === '1';
-  const settingsStateValue = new URLSearchParams(window.location.search).get('settingsState');
-  const settingsState = settingsStateValue === 'outlook' || settingsStateValue === 'safety' ? settingsStateValue : settingsStateValue ? 'templates' : null;
-  const importState = new URLSearchParams(window.location.search).get('importState') === '1';
-  const warningState = new URLSearchParams(window.location.search).get('warningState') === '1';
+  const queryParameters = new URLSearchParams(window.location.search);
+  const settingsStateValue = queryParameters.get('settingsState');
+  const settingsState: SettingsTab | null = settingsStateValue === 'outlook' || settingsStateValue === 'safety'
+    ? settingsStateValue
+    : settingsStateValue ? 'signatures' : null;
+  const importState = queryParameters.get('importState') === '1';
+  const warningState = queryParameters.get('warningState') === '1';
+  const accountMenuState = queryParameters.get('accountMenuState') === '1';
+  const signatureMenuState = queryParameters.get('signatureMenuState') === '1';
 
   useEffect(() => {
     void refreshAccounts(false);
@@ -402,7 +536,7 @@ export function App() {
 
   useEffect(() => {
     if (!settingsState) return;
-    const timer = window.setTimeout(() => setSettingsOpen(true), 90);
+    const timer = window.setTimeout(() => setSettingsTab(settingsState), 90);
     return () => window.clearTimeout(timer);
   }, [settingsState]);
 
@@ -658,7 +792,7 @@ export function App() {
 
   async function importNewTemplate() {
     if (!window.desktopApi) {
-      setNotice('当前是浏览器预览模式；打包版会把所选模板复制到应用专用目录。');
+      setNotice('当前是浏览器预览模式；打包版会把所选签名复制到应用专用目录。');
       return;
     }
     try {
@@ -666,7 +800,7 @@ export function App() {
       if (!state) return;
       setTemplateState(state);
       setSelectedTemplateId(state.selectedTemplateId);
-      setNotice('模板已导入并设为当前模板。');
+      setNotice('签名已导入并设为当前签名。');
     } catch (error) {
       setNotice(safeMessage(error));
     }
@@ -678,7 +812,7 @@ export function App() {
       const state = await window.desktopApi.deleteTemplate(id);
       setTemplateState(state);
       setSelectedTemplateId(state.selectedTemplateId);
-      setNotice('已从应用模板库中删除。');
+      setNotice('已从应用签名库中删除。');
     } catch (error) {
       setNotice(safeMessage(error));
     }
@@ -709,7 +843,7 @@ export function App() {
       return;
     }
     if (!selectedTemplateId || !templateState.templates.some((template) => template.id === selectedTemplateId)) {
-      setNotice('请先在设置中导入并选择公司模板。');
+      setNotice('请先在设置中导入并选择邮件签名。');
       return;
     }
     setCreating(true);
@@ -764,31 +898,45 @@ export function App() {
             <span>导入交接包</span>
           </button>
           <div className="path-box" title={batch.sourcePath}>
-            <span>{batch.sourcePath}</span>
+            <MiddleEllipsisPath value={batch.sourcePath} />
             <FolderOpen24Regular aria-hidden="true" />
           </div>
           <div className="command-field account-field">
             <label htmlFor="account">Outlook 账户</label>
-            <div className="select-wrap">
-              <select id="account" value={selectedAccountId} disabled={accountsLoading || !accounts.length} onChange={(event) => setSelectedAccountId(event.target.value)}>
-                {!accounts.length ? <option value="">{accountsLoading ? '正在检测…' : '未检测到账户'}</option> : null}
-                {accounts.map((account) => <option key={account.storeId} value={account.storeId}>{account.smtpAddress || account.displayName}</option>)}
-              </select>
-              <ChevronDown16Regular aria-hidden="true" />
-            </div>
+            <CommandDropdown
+              id="account"
+              kind="account"
+              value={selectedAccountId}
+              placeholder={accountsLoading ? '正在检测…' : '未检测到账户'}
+              disabled={accountsLoading || !accounts.length}
+              defaultOpen={accountMenuState}
+              options={accounts.map((account) => ({
+                id: account.storeId,
+                label: account.smtpAddress || account.displayName,
+                description: account.displayName
+              }))}
+              onChange={setSelectedAccountId}
+            />
           </div>
           <div className="command-field template-field">
-            <label htmlFor="template">公司模板</label>
-            <div className="select-wrap template-select-wrap">
-              <select id="template" value={selectedTemplateId} disabled={!templateState.templates.length} onChange={(event) => void chooseTemplate(event.target.value)}>
-                {!templateState.templates.length ? <option value="">请在设置中导入模板</option> : null}
-                {templateState.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
-              </select>
-              <ChevronDown16Regular />
-            </div>
+            <label htmlFor="signature">邮件签名</label>
+            <CommandDropdown
+              id="signature"
+              kind="signature"
+              value={selectedTemplateId}
+              placeholder="请在设置中添加签名"
+              defaultOpen={signatureMenuState}
+              options={templateState.templates.map((template) => ({
+                id: template.id,
+                label: template.name,
+                description: template.fileName
+              }))}
+              onChange={(id) => void chooseTemplate(id)}
+              action={{ label: '添加新签名', onSelect: () => setSettingsTab('signatures') }}
+            />
           </div>
           <button className="icon-button" aria-label="关于"><Info20Regular /></button>
-          <button className="icon-button" aria-label="设置" onClick={() => setSettingsOpen(true)}><Settings20Regular /></button>
+          <button className="icon-button" aria-label="设置" onClick={() => setSettingsTab('signatures')}><Settings20Regular /></button>
         </section>
 
         <section className="summary-bar" aria-label="导入汇总">
@@ -951,7 +1099,7 @@ export function App() {
             <p>草稿会保存到所选账户的“草稿箱”，不会打开邮件窗口，也不会自动发送。</p>
             <dl className="confirm-details">
               <div><dt>发件账户</dt><dd>{accounts.find((item) => item.storeId === selectedAccountId)?.smtpAddress}</dd></div>
-              <div><dt>公司模板</dt><dd>{templateState.templates.find((template) => template.id === selectedTemplateId)?.fileName ?? '未选择'}</dd></div>
+              <div><dt>邮件签名</dt><dd>{templateState.templates.find((template) => template.id === selectedTemplateId)?.fileName ?? '未选择'}</dd></div>
             </dl>
             {selectedWarningRecords.length ? (
               <div className="confirm-warning" role="status">
@@ -971,19 +1119,19 @@ export function App() {
         document.body
       ) : null}
 
-      {settingsOpen ? (
+      {settingsTab ? (
         <SettingsDialog
           templateState={templateState}
           accounts={accounts}
           accountsLoading={accountsLoading}
           accountError={accountError}
-          initialTab={settingsState ?? 'templates'}
+          initialTab={settingsTab}
           onSelectTemplate={chooseTemplate}
           onImportTemplate={importNewTemplate}
           onDeleteTemplate={removeTemplate}
           onOpenTemplateFolder={openTemplateFolder}
           onRefreshAccounts={() => refreshAccounts(true)}
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => setSettingsTab(null)}
         />
       ) : null}
 

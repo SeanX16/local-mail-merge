@@ -10,19 +10,20 @@ import {
   FolderOpen20Regular,
   MailSettings20Regular,
   ShieldCheckmark20Regular,
+  Signature20Regular,
   TableSettings20Regular,
   Warning20Regular
 } from '@fluentui/react-icons';
 import type { OutlookAccount, TemplateState } from './types';
 
-type SettingsTab = 'templates' | 'outlook' | 'safety';
+export type SettingsTab = 'signatures' | 'outlook' | 'safety';
 
 export function SettingsDialog({
   templateState,
   accounts,
   accountsLoading,
   accountError,
-  initialTab = 'templates',
+  initialTab = 'signatures',
   onSelectTemplate,
   onImportTemplate,
   onDeleteTemplate,
@@ -64,15 +65,15 @@ export function SettingsDialog({
         <header className="settings-header">
           <div>
             <h2 id="settings-title">设置</h2>
-            <p>管理公司模板、Outlook 连接和分级校验规则</p>
+            <p>管理邮件签名、Outlook 连接和分级校验规则</p>
           </div>
           <button className="icon-button" onClick={onClose} aria-label="关闭设置"><Dismiss20Regular /></button>
         </header>
 
         <div className="settings-layout">
           <nav className="settings-nav" aria-label="设置分类">
-            <button data-settings-tab="templates" className={tab === 'templates' ? 'is-active' : ''} onClick={() => setTab('templates')}>
-              <Document20Regular /><span>公司模板</span>
+            <button data-settings-tab="signatures" className={tab === 'signatures' ? 'is-active' : ''} onClick={() => setTab('signatures')}>
+              <Signature20Regular /><span>邮件签名</span>
             </button>
             <button data-settings-tab="outlook" className={tab === 'outlook' ? 'is-active' : ''} onClick={() => setTab('outlook')}>
               <MailSettings20Regular /><span>Outlook 账户</span>
@@ -83,15 +84,15 @@ export function SettingsDialog({
           </nav>
 
           <div className="settings-content">
-            {tab === 'templates' ? (
+            {tab === 'signatures' ? (
               <div className="settings-section">
                 <div className="settings-section-heading">
                   <div>
-                    <h3>公司模板</h3>
-                    <p>这里的模板会出现在主界面下拉框中。导入时会复制进应用专用目录。</p>
+                    <h3>邮件签名</h3>
+                    <p>这里保存的签名会出现在主界面下拉框中。导入时会复制进应用专用目录。</p>
                   </div>
                   <button className="button button--primary settings-action" disabled={busy} onClick={() => void run(onImportTemplate)}>
-                    <Add20Regular />导入模板
+                    <Add20Regular />导入签名
                   </button>
                 </div>
 
@@ -100,11 +101,11 @@ export function SettingsDialog({
                     <div className={`template-row ${template.id === templateState.selectedTemplateId ? 'is-selected' : ''}`} key={template.id}>
                       <input
                         type="radio"
-                        name="default-template"
+                        name="default-signature"
                         checked={template.id === templateState.selectedTemplateId}
                         onChange={() => void run(() => onSelectTemplate(template.id))}
                       />
-                      <span className="template-file-icon"><Document20Regular /></span>
+                      <span className="template-file-icon"><Signature20Regular /></span>
                       <span className="template-row-copy">
                         <strong>{template.name}</strong>
                         <small>{template.fileName}</small>
@@ -122,17 +123,17 @@ export function SettingsDialog({
                       ) : <span className="template-delete-spacer" />}
                     </div>
                   )) : (
-                    <div className="settings-empty"><Document20Regular /><strong>还没有模板</strong><span>点击“导入模板”添加 .oft 或 HTML 文件。</span></div>
+                    <div className="settings-empty"><Signature20Regular /><strong>还没有签名</strong><span>点击“导入签名”添加 .oft 或 HTML 文件。</span></div>
                   )}
                 </div>
 
                 <button className="text-button settings-folder-link" disabled={busy} onClick={() => void run(onOpenTemplateFolder)}>
-                  <FolderOpen20Regular />打开已导入模板目录
+                  <FolderOpen20Regular />打开已导入签名目录
                 </button>
 
                 {pendingTemplate ? (
                   <div className="settings-inline-confirm" role="alert">
-                    <span>从应用中删除“{pendingTemplate.name}”？原始文件不会受到影响。</span>
+                    <span>从应用中删除签名“{pendingTemplate.name}”？原始文件不会受到影响。</span>
                     <div>
                       <button className="button button--ghost button--compact" onClick={() => setPendingDeleteId('')}>取消</button>
                       <button className="button button--danger button--compact" disabled={busy} onClick={() => void run(async () => { await onDeleteTemplate(pendingTemplate.id); setPendingDeleteId(''); })}>删除</button>

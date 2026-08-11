@@ -78,13 +78,13 @@ internal sealed partial class OutlookDraftService
     {
         if (!File.Exists(templatePath))
         {
-            throw new FileNotFoundException("公司签名或模板文件不存在。", templatePath);
+            throw new FileNotFoundException("邮件签名文件不存在。", templatePath);
         }
 
         var templateExtension = Path.GetExtension(templatePath).ToLowerInvariant();
         if (templateExtension is not ".oft" and not ".html" and not ".htm")
         {
-            throw new InvalidDataException("公司模板仅支持 .oft、.html 或 .htm。 ");
+            throw new InvalidDataException("邮件签名仅支持 .oft、.html 或 .htm。 ");
         }
 
         object? application = null;

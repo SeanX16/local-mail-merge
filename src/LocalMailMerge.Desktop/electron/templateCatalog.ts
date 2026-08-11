@@ -99,9 +99,9 @@ function currentState(): TemplateState {
 }
 
 function requireEntry(id: string): TemplateEntry {
-  if (typeof id !== 'string' || id.length > 520) throw new Error('模板标识无效。');
+  if (typeof id !== 'string' || id.length > 520) throw new Error('签名标识无效。');
   const template = entries().find((item) => item.id === id);
-  if (!template) throw new Error('所选模板已不存在，请重新选择。');
+  if (!template) throw new Error('所选签名已不存在，请重新选择。');
   return template;
 }
 
@@ -124,13 +124,13 @@ export function getTemplateState(): TemplateState {
 
 export function importTemplate(sourcePath: string): TemplateState {
   if (typeof sourcePath !== 'string' || sourcePath.length > 4096 || !fs.existsSync(sourcePath)) {
-    throw new Error('模板文件不存在。');
+    throw new Error('签名文件不存在。');
   }
   const extension = path.extname(sourcePath).toLowerCase();
-  if (!supportedExtensions.has(extension)) throw new Error('公司模板仅支持 .oft、.html 或 .htm。');
+  if (!supportedExtensions.has(extension)) throw new Error('邮件签名仅支持 .oft、.html 或 .htm。');
   const stat = fs.statSync(sourcePath);
-  if (!stat.isFile() || stat.size === 0) throw new Error('模板文件为空或不可用。');
-  if (stat.size > maximumTemplateBytes) throw new Error('模板文件不能超过 20 MB。');
+  if (!stat.isFile() || stat.size === 0) throw new Error('签名文件为空或不可用。');
+  if (stat.size > maximumTemplateBytes) throw new Error('签名文件不能超过 20 MB。');
 
   const destination = uniqueDestination(path.basename(sourcePath));
   fs.copyFileSync(sourcePath, destination);

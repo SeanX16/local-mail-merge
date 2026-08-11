@@ -134,28 +134,41 @@ function createWindow(): void {
   mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
 
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
-  const settingsCapture = ['settings', 'templates', 'outlook', 'safety'].includes(captureState);
+  const settingsCapture = ['settings', 'templates', 'signatures', 'outlook', 'safety'].includes(captureState);
   const importCapture = captureState === 'import';
   const warningCapture = captureState === 'warning';
-  const captureQuery = warningCapture
+  const accountMenuCapture = captureState === 'account-menu';
+  const signatureMenuCapture = captureState === 'signature-menu';
+  const settingsCaptureValue = captureState === 'outlook' || captureState === 'safety' ? captureState : 'signatures';
+  const captureQuery = accountMenuCapture
+    ? 'accountMenuState=1'
+    : signatureMenuCapture
+    ? 'signatureMenuState=1'
+    : warningCapture
     ? 'warningState=1'
     : importCapture
     ? 'importState=1'
     : settingsCapture
-    ? `settingsState=${captureState === 'settings' ? 'templates' : captureState}`
+    ? `settingsState=${settingsCaptureValue}`
     : 'referenceState=1';
   if (rendererUrl) {
-    const url = capturePath || importCapture || warningCapture ? `${rendererUrl}/?${captureQuery}` : rendererUrl;
+    const url = capturePath || importCapture || warningCapture || accountMenuCapture || signatureMenuCapture || settingsCapture
+      ? `${rendererUrl}/?${captureQuery}`
+      : rendererUrl;
     void mainWindow.loadURL(url);
   } else {
     const query: Record<string, string> = warningCapture
       ? { warningState: '1' }
       : importCapture
       ? { importState: '1' }
+      : accountMenuCapture
+      ? { accountMenuState: '1' }
+      : signatureMenuCapture
+      ? { signatureMenuState: '1' }
       : settingsCapture
-      ? { settingsState: captureState === 'settings' ? 'templates' : captureState }
+      ? { settingsState: settingsCaptureValue }
       : { referenceState: '1' };
-    const options = capturePath || importCapture || warningCapture ? { query } : undefined;
+    const options = capturePath || importCapture || warningCapture || accountMenuCapture || signatureMenuCapture || settingsCapture ? { query } : undefined;
     void mainWindow.loadFile(path.join(__dirname, '..', 'dist-renderer', 'index.html'), options);
   }
 
@@ -238,7 +251,27 @@ function createWindow(): void {
           checks.rowDrivesPreview = (document.querySelector('.preview-metadata')?.textContent ?? '').length > 20;
           checks.warningBannerVisible = Boolean(document.querySelector('.validation-banner--warning'));
 
-          checks.templateDropdownPopulated = document.querySelectorAll('#template option').length > 0;
+          checks.pathUsesMiddleEllipsis = Boolean(document.querySelector('.path-directory') && document.querySelector('.path-filename')?.textContent?.includes('.json'));
+          checks.accountUsesCustomDropdown = Boolean(document.querySelector('[data-testid="account-dropdown-trigger"]')) && !document.querySelector('#account')?.matches('select');
+          const accountDropdown = document.querySelector('[data-testid="account-dropdown-trigger"]');
+          for (let attempt = 0; attempt < 20 && accountDropdown?.disabled; attempt++) await wait(50);
+          accountDropdown?.click();
+          await wait(30);
+          checks.accountDropdownOpened = Boolean(document.querySelector('[data-testid="account-dropdown-menu"]'));
+          document.querySelector('[data-testid="account-dropdown-option"]')?.click();
+          await wait(30);
+          checks.accountDropdownClosed = !document.querySelector('[data-testid="account-dropdown-menu"]');
+
+          document.querySelector('[data-testid="signature-dropdown-trigger"]')?.click();
+          await wait(30);
+          checks.signatureDropdownPopulated = document.querySelectorAll('[data-testid="signature-dropdown-option"]').length > 0;
+          checks.addNewSignatureAvailable = Boolean(document.querySelector('[data-testid="signature-dropdown-action"]'));
+          document.querySelector('[data-testid="signature-dropdown-action"]')?.click();
+          await wait(50);
+          checks.addNewSignatureOpenedSettings = Boolean(document.querySelector('[data-settings-tab="signatures"].is-active'));
+          document.querySelector('.settings-header button[aria-label="关闭设置"]')?.click();
+          await wait(30);
+
           document.querySelector('button[aria-label="设置"]')?.click();
           await wait(50);
           checks.settingsOpened = Boolean(document.querySelector('.settings-dialog'));
@@ -334,9 +367,9 @@ app.whenReady().then(() => {
   ipcMain.handle('templates:import', async (event) => {
     assertTrustedEvent(event);
     const result = await dialog.showOpenDialog(mainWindow!, {
-      title: '导入公司模板或签名',
+      title: '导入邮件签名',
       properties: ['openFile'],
-      filters: [{ name: '公司模板', extensions: ['oft', 'html', 'htm'] }]
+      filters: [{ name: '邮件签名', extensions: ['oft', 'html', 'htm'] }]
     });
     return result.canceled ? null : importTemplate(result.filePaths[0]);
   });

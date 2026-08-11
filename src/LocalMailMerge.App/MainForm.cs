@@ -156,7 +156,7 @@ internal sealed class MainForm : Form
         templatePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 88));
         templatePanel.Controls.Add(new Label
         {
-            Text = "公司模板",
+            Text = "邮件签名",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = AppTheme.TextPrimary
@@ -792,7 +792,7 @@ internal sealed class MainForm : Form
 
         if (!File.Exists(_templateText.Text))
         {
-            MessageBox.Show(this, "必须选择公司批准的 .oft 或 HTML 模板。", "缺少公司模板", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, "必须选择公司批准的 .oft 或 HTML 邮件签名。", "缺少邮件签名", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
