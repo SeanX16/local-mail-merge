@@ -54,7 +54,21 @@ public sealed class OutreachMessage
 
     public string EffectiveBodyHtml => !string.IsNullOrWhiteSpace(BodyHtml)
         ? BodyHtml
-        : $"<div style=\"white-space:pre-wrap\">{System.Net.WebUtility.HtmlEncode(BodyText)}</div>";
+        : ConvertPlainTextToHtml(BodyText);
+
+    private static string ConvertPlainTextToHtml(string bodyText)
+    {
+        if (string.IsNullOrEmpty(bodyText)) return string.Empty;
+
+        var normalized = bodyText.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var paragraphs = normalized
+            .Split("\n\n", StringSplitOptions.None)
+            .Select(paragraph => paragraph.Trim('\n'))
+            .Where(paragraph => paragraph.Length > 0)
+            .Select(paragraph => System.Net.WebUtility.HtmlEncode(paragraph).Replace("\n", "<br>", StringComparison.Ordinal));
+
+        return string.Concat(paragraphs.Select(paragraph => $"<p style=\"margin:0 0 12pt 0;\">{paragraph}</p>"));
+    }
 
     public string GetFieldValue(string key)
     {

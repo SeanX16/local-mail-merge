@@ -8,6 +8,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("校验门禁区分可创建和拦截记录", TestValidationAsync),
     ("内容哈希不一致继续硬拦截", TestHashMismatchAsync),
     ("历史成功记录触发重复保护", TestAuditDeduplicationAsync),
+    ("纯文本正文转换为 Outlook 兼容段落", TestPlainTextBodyFormattingAsync),
     ("CSV 导入保留动态字段", TestCsvImportAsync),
     ("XLSX 自动选择人员明细工作表", TestXlsxImportAsync)
 };
@@ -93,6 +94,22 @@ static async Task TestAuditDeduplicationAsync()
     new ValidationService().Validate(batch, store.LoadSuccessfulKeys());
     Equal(ValidationState.Duplicate, message.Validation.State, "duplicate state");
     Directory.Delete(testDirectory, recursive: true);
+}
+
+static Task TestPlainTextBodyFormattingAsync()
+{
+    var plainText = CreateMessage(
+        "Dear James,\r\n\r\nFirst <line> & details.\nContinued line.\r\n\r\nWould you be open to a conversation?");
+    var html = plainText.EffectiveBodyHtml;
+    Equal(3, html.Split("<p style=", StringSplitOptions.None).Length - 1, "paragraph count");
+    True(html.Contains("Dear James,</p>", StringComparison.Ordinal), "greeting paragraph missing");
+    True(html.Contains("First &lt;line&gt; &amp; details.<br>Continued line.", StringComparison.Ordinal), "encoding or explicit line break missing");
+    True(html.Contains("Would you be open to a conversation?</p>", StringComparison.Ordinal), "closing paragraph missing");
+    True(!html.Contains("white-space:pre-wrap", StringComparison.OrdinalIgnoreCase), "Outlook-incompatible white-space CSS remains");
+
+    var suppliedHtml = CreateMessage("ignored", "<p>Existing HTML</p>");
+    Equal("<p>Existing HTML</p>", suppliedHtml.EffectiveBodyHtml, "supplied HTML should remain unchanged");
+    return Task.CompletedTask;
 }
 
 static async Task TestCsvImportAsync()
@@ -182,6 +199,23 @@ static void WriteEntry(ZipArchive archive, string name, string content)
     using var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false));
     writer.Write(content);
 }
+
+static OutreachMessage CreateMessage(string bodyText, string bodyHtml = "") => new()
+{
+    BatchId = "format_test",
+    PersonId = "example_person",
+    RecipientName = "Example Person",
+    RecipientEmail = "example.person@example.test",
+    Subject = "Example subject",
+    BodyHtml = bodyHtml,
+    BodyText = bodyText,
+    TargetRole = "Example role",
+    ReviewStatus = "Approved",
+    DoNotContact = false,
+    DeclaredContentHash = string.Empty,
+    PersonalizationFacts = [],
+    Fields = new Dictionary<string, string>()
+};
 
 static void True(bool condition, string message)
 {
