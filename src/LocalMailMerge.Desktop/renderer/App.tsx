@@ -41,7 +41,6 @@ import {
   ReOrderDotsVertical16Regular,
   Search20Regular,
   Settings20Regular,
-  Warning16Regular,
   Warning24Regular
 } from '@fluentui/react-icons';
 import { demoBatch } from './demoData';
@@ -267,29 +266,14 @@ function ReviewPill({ value }: { value: string }) {
 }
 
 function ValidationCell({ record }: { record: MailRecord }) {
-  if (record.validationText === '邮箱无效') {
-    return (
-      <span className="validation-inline validation-inline--blocked" title={record.validationDetail}>
-        <Dismiss16Regular aria-hidden="true" />
-        <span className="validation-pill">邮箱无效</span>
-      </span>
-    );
-  }
-  if (record.validationKind === 'eligible') {
-    return <span className="validation-icon validation-icon--ok" title={record.validationDetail}><Checkmark16Regular aria-label="通过" /></span>;
-  }
-  if (record.validationKind === 'review') {
-    return (
-      <span className="validation-inline validation-inline--warning" title={record.validationDetail}>
-        <Warning16Regular aria-hidden="true" />
-        <span className="validation-pill validation-pill--warning">{record.validationText}</span>
-      </span>
-    );
-  }
-  if (record.validationKind === 'duplicate') {
-    return <span className="validation-pill validation-pill--duplicate" title={record.validationDetail}>重复</span>;
-  }
-  return <span className="validation-inline validation-inline--blocked" title={record.validationDetail}><Dismiss16Regular aria-hidden="true" /><span className="validation-pill">{record.validationText}</span></span>;
+  const tone = record.validationKind === 'eligible'
+    ? 'eligible'
+    : record.validationKind === 'review' && record.canCreate
+      ? 'warning'
+      : 'blocked';
+  const label = tone === 'eligible' ? '可创建' : tone === 'warning' ? '警告' : '已拦截';
+  const detail = [record.validationText, record.validationDetail].filter(Boolean).join('：');
+  return <span className={`validation-pill validation-pill--${tone}`} title={detail}>{label}</span>;
 }
 
 function SummaryItem({
@@ -430,7 +414,15 @@ function FilterPopover({
   const initialKey = initial.join('\u0000');
   const [selected, setSelected] = useState(() => new Set(initial));
   const [query, setQuery] = useState('');
+  const popoverRef = useRef<HTMLDivElement>(null);
   useEffect(() => setSelected(new Set(initial)), [initialKey]);
+  useEffect(() => {
+    function closeFromOutside(event: PointerEvent) {
+      if (!popoverRef.current?.contains(event.target as Node)) onClose();
+    }
+    document.addEventListener('pointerdown', closeFromOutside);
+    return () => document.removeEventListener('pointerdown', closeFromOutside);
+  }, [onClose]);
   const filtered = values.filter((value) => value.toLowerCase().includes(query.trim().toLowerCase()));
   const allSelected = selected.size === values.length;
 
@@ -444,6 +436,7 @@ function FilterPopover({
 
   return createPortal(
     <div
+      ref={popoverRef}
       className="popover filter-popover"
       style={{ left: Math.min(anchor.left, window.innerWidth - 218), top: anchor.top }}
       role="dialog"
@@ -522,6 +515,7 @@ export function App() {
   const warningState = queryParameters.get('warningState') === '1';
   const accountMenuState = queryParameters.get('accountMenuState') === '1';
   const signatureMenuState = queryParameters.get('signatureMenuState') === '1';
+  const settingsModalOpen = Boolean(settingsTab);
 
   useEffect(() => {
     void refreshAccounts(false);
@@ -539,6 +533,17 @@ export function App() {
     const timer = window.setTimeout(() => setSettingsTab(settingsState), 90);
     return () => window.clearTimeout(timer);
   }, [settingsState]);
+
+  useEffect(() => {
+    if (!window.desktopApi?.setModalState) return;
+    document.documentElement.dataset.titlebarDimmed = String(settingsModalOpen);
+    void window.desktopApi.setModalState(settingsModalOpen).catch(() => {
+      document.documentElement.dataset.titlebarDimmed = 'false';
+    });
+    return () => {
+      if (settingsModalOpen) void window.desktopApi?.setModalState(false);
+    };
+  }, [settingsModalOpen]);
 
   useEffect(() => {
     if (!importState) return;
@@ -591,6 +596,7 @@ export function App() {
     const selection: ColumnDef<MailRecord> = {
       id: '__select',
       size: 48,
+      enableResizing: false,
       enableSorting: false,
       enableColumnFilter: false,
       header: ({ table }) => (
@@ -620,7 +626,9 @@ export function App() {
       id: field.key,
       accessorFn: (record) => record.values[field.key] ?? '',
       size: field.width,
-      minSize: Math.min(96, field.width),
+      minSize: field.label === '校验结果' ? 96 : Math.min(76, field.width),
+      maxSize: 560,
+      enableResizing: true,
       filterFn: (row, columnId, filterValue: string[]) => !filterValue?.length || filterValue.includes(String(row.getValue(columnId))),
       header: ({ column }) => {
         const activeFilter = column.getFilterValue() as string[] | undefined;
@@ -634,11 +642,13 @@ export function App() {
               className={`column-filter-button${activeFilter?.length ? ' is-active' : ''}`}
               data-filter-id={field.key}
               aria-label={`筛选${field.label}`}
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation();
                 const buttonRect = event.currentTarget.getBoundingClientRect();
                 const headerRect = event.currentTarget.closest('th')?.getBoundingClientRect() ?? buttonRect;
-                setFilterAnchor({ left: headerRect.left, top: buttonRect.bottom + 6, width: headerRect.width, fieldKey: field.key });
+                const next = { left: headerRect.left, top: buttonRect.bottom + 6, width: headerRect.width, fieldKey: field.key };
+                setFilterAnchor((current) => current?.fieldKey === field.key ? null : next);
               }}
             >
               {activeFilter?.length ? <span className="filter-count">{activeFilter.length}</span> : null}
@@ -649,7 +659,7 @@ export function App() {
       },
       cell: ({ row, getValue }) => {
         if (field.key === 'review_status') return <ReviewPill value={String(getValue())} />;
-        if (field.key === '__validation') return <ValidationCell record={row.original} />;
+        if (field.key === '__validation' || field.key === '__validation_result' || field.label === '校验结果') return <ValidationCell record={row.original} />;
         return <span className="cell-text" title={String(getValue())}>{String(getValue())}</span>;
       }
     }));
@@ -667,6 +677,7 @@ export function App() {
     onColumnOrderChange: setColumnOrder,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
+    columnResizeMode: 'onChange',
     globalFilterFn: (row, _columnId, value: string) => {
       const query = value.trim().toLowerCase();
       if (!query) return true;
@@ -977,15 +988,42 @@ export function App() {
               </div>
             </div>
 
-            <div className="table-frame">
+            <div className={`table-frame${table.getState().columnSizingInfo.isResizingColumn ? ' is-resizing' : ''}`}>
               <div className="table-scroll">
-                <table style={{ width: table.getCenterTotalSize() }}>
+                <table style={{ width: table.getTotalSize() }}>
                   <thead>
                     {table.getHeaderGroups().map((headerGroup) => (
                       <tr key={headerGroup.id}>
                         {headerGroup.headers.map((header) => (
                           <th key={header.id} style={{ width: header.getSize() }}>
                             {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                            {header.column.getCanResize() ? (
+                              <div
+                                className={`column-resizer${header.column.getIsResizing() ? ' is-resizing' : ''}`}
+                                data-column-resizer={header.column.id}
+                                role="separator"
+                                tabIndex={0}
+                                aria-label={`调整${String(header.column.columnDef.id ?? '')}列宽`}
+                                aria-orientation="vertical"
+                                aria-valuemin={header.column.columnDef.minSize}
+                                aria-valuemax={header.column.columnDef.maxSize}
+                                aria-valuenow={header.column.getSize()}
+                                onDoubleClick={(event) => {
+                                  event.stopPropagation();
+                                  header.column.resetSize();
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                                  event.preventDefault();
+                                  const minSize = header.column.columnDef.minSize ?? 20;
+                                  const maxSize = header.column.columnDef.maxSize ?? Number.MAX_SAFE_INTEGER;
+                                  const nextSize = Math.min(maxSize, Math.max(minSize, header.column.getSize() + (event.key === 'ArrowRight' ? 8 : -8)));
+                                  table.setColumnSizing((current) => ({ ...current, [header.column.id]: nextSize }));
+                                }}
+                                onMouseDown={header.getResizeHandler()}
+                                onTouchStart={header.getResizeHandler()}
+                              />
+                            ) : null}
                           </th>
                         ))}
                       </tr>

@@ -14,6 +14,8 @@ import {
 type WorkerCommand = 'inspect-xlsx' | 'import' | 'accounts' | 'create-drafts';
 
 let mainWindow: BrowserWindow | null = null;
+const titleBarOverlayNormal = { color: '#f5f8fc', symbolColor: '#283548', height: 40 };
+const titleBarOverlayDimmed = { color: '#9199a4', symbolColor: '#404a57', height: 40 };
 const isDemo = process.argv.includes('--demo');
 const captureArgument = process.argv.find((argument) => argument.startsWith('--capture='));
 const capturePath = captureArgument?.slice('--capture='.length);
@@ -114,7 +116,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#f5f8fc', symbolColor: '#283548', height: 40 },
+    titleBarOverlay: titleBarOverlayNormal,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -137,6 +139,7 @@ function createWindow(): void {
   const settingsCapture = ['settings', 'templates', 'signatures', 'outlook', 'safety'].includes(captureState);
   const importCapture = captureState === 'import';
   const warningCapture = captureState === 'warning';
+  const validationCapture = captureState === 'validation';
   const accountMenuCapture = captureState === 'account-menu';
   const signatureMenuCapture = captureState === 'signature-menu';
   const settingsCaptureValue = captureState === 'outlook' || captureState === 'safety' ? captureState : 'signatures';
@@ -146,6 +149,8 @@ function createWindow(): void {
     ? 'signatureMenuState=1'
     : warningCapture
     ? 'warningState=1'
+    : validationCapture
+    ? 'validationState=1'
     : importCapture
     ? 'importState=1'
     : settingsCapture
@@ -159,6 +164,8 @@ function createWindow(): void {
   } else {
     const query: Record<string, string> = warningCapture
       ? { warningState: '1' }
+      : validationCapture
+      ? { validationState: '1' }
       : importCapture
       ? { importState: '1' }
       : accountMenuCapture
@@ -178,6 +185,15 @@ function createWindow(): void {
   if (capturePath) {
     mainWindow.webContents.once('did-finish-load', async () => {
       await new Promise((resolve) => setTimeout(resolve, 600));
+      if (validationCapture) {
+        await mainWindow!.webContents.executeJavaScript(`
+          (() => {
+            const tableScroll = document.querySelector('.table-scroll');
+            if (tableScroll) tableScroll.scrollLeft = tableScroll.scrollWidth;
+          })()
+        `);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
       const image = await mainWindow!.webContents.capturePage();
       fs.mkdirSync(path.dirname(capturePath), { recursive: true });
       fs.writeFileSync(capturePath, image.toPNG());
@@ -230,10 +246,29 @@ function createWindow(): void {
           await wait(40);
           checks.fieldManagerClosed = !document.querySelector('.field-manager');
 
-          const roleFilter = document.querySelector('[data-filter-id="target_role"]');
+          checks.validationEligibleLabel = document.querySelector('.validation-pill--eligible')?.textContent === '可创建';
+          checks.validationWarningLabel = document.querySelector('.validation-pill--warning')?.textContent === '警告';
+          checks.validationBlockedLabel = document.querySelector('.validation-pill--blocked')?.textContent === '已拦截';
+
+          const nameResizer = document.querySelector('[data-column-resizer="recipient_name"]');
+          const nameHeader = nameResizer?.closest('th');
+          const initialNameWidth = nameHeader?.getBoundingClientRect().width ?? 0;
+          nameResizer?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 360 }));
+          document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, button: 0, clientX: 408 }));
+          document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0, clientX: 408 }));
+          await wait(50);
+          checks.columnResized = (nameHeader?.getBoundingClientRect().width ?? 0) >= initialNameWidth + 30;
+
+          let roleFilter = document.querySelector('[data-filter-id="target_role"]');
           roleFilter?.click();
           await wait(40);
           checks.filterOpened = Boolean(document.querySelector('.filter-popover'));
+          document.querySelector('.preview-pane')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+          await wait(40);
+          checks.filterClosedOnOutsideClick = !document.querySelector('.filter-popover');
+          roleFilter = document.querySelector('[data-filter-id="target_role"]');
+          roleFilter?.click();
+          await wait(40);
           document.querySelector('.filter-options input')?.click();
           document.querySelector('.filter-footer .button--primary')?.click();
           await wait(60);
@@ -275,6 +310,7 @@ function createWindow(): void {
           document.querySelector('button[aria-label="设置"]')?.click();
           await wait(50);
           checks.settingsOpened = Boolean(document.querySelector('.settings-dialog'));
+          checks.titlebarDimmedWithSettings = document.documentElement.dataset.titlebarDimmed === 'true';
           document.querySelector('[data-settings-tab="outlook"]')?.click();
           await wait(30);
           checks.outlookSettingsAvailable = Boolean(document.querySelector('.account-list'));
@@ -284,7 +320,9 @@ function createWindow(): void {
           document.querySelector('.settings-header button[aria-label="关闭设置"]')?.click();
           await wait(30);
           checks.settingsClosed = !document.querySelector('.settings-dialog');
+          checks.titlebarRestoredAfterSettings = document.documentElement.dataset.titlebarDimmed === 'false';
 
+          roleFilter = document.querySelector('[data-filter-id="target_role"]');
           roleFilter?.click();
           await wait(30);
           document.querySelector('.filter-footer .text-button--muted')?.click();
@@ -428,6 +466,12 @@ app.whenReady().then(() => {
   ipcMain.handle('window:close', (event) => {
     assertTrustedEvent(event);
     mainWindow?.close();
+  });
+  ipcMain.handle('window:set-modal-state', (event, active: boolean) => {
+    assertTrustedEvent(event);
+    if (typeof active !== 'boolean') throw new Error('窗口遮罩状态无效。');
+    mainWindow?.setTitleBarOverlay(active ? titleBarOverlayDimmed : titleBarOverlayNormal);
+    return active;
   });
   ipcMain.handle('shell:open-outlook', async (event) => {
     assertTrustedEvent(event);

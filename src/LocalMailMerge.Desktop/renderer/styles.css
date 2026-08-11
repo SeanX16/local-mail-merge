@@ -1,5 +1,6 @@
 :root {
   font-family: "Microsoft YaHei UI", "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
   color: #1f2937;
   background: #f4f7fb;
   font-synthesis: none;
@@ -130,6 +131,7 @@ button {
   cursor: pointer;
   white-space: nowrap;
   background: #fff;
+  font-size: 13px;
 }
 
 .button:focus-visible,
@@ -205,7 +207,7 @@ input:focus-visible,
 .import-button {
   width: 160px;
   height: 42px;
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .path-box,
@@ -235,7 +237,7 @@ input:focus-visible,
   align-items: center;
   min-width: 0;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .path-directory {
@@ -266,7 +268,7 @@ input:focus-visible,
 }
 
 .command-field label {
-  font-size: 14px;
+  font-size: 13px;
   white-space: nowrap;
   color: #283548;
 }
@@ -543,13 +545,13 @@ input:focus-visible,
 .summary-value--red { color: #dc293c; }
 
 .summary-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #3b4757;
 }
 
 .summary-value {
   margin-left: auto;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
 }
 
@@ -677,7 +679,7 @@ table {
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
-  font-size: 11.5px;
+  font-size: 12.5px;
 }
 
 thead {
@@ -688,6 +690,7 @@ thead {
 }
 
 th {
+  position: relative;
   height: 36px;
   padding: 0;
   text-align: left;
@@ -696,6 +699,46 @@ th {
   border-right: 1px solid #e2e7ed;
   border-bottom: 1px solid #d8dee6;
   background: #f7f9fb;
+}
+
+.column-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  z-index: 4;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.column-resizer::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 3px;
+  width: 1px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.column-resizer:hover::after,
+.column-resizer:focus-visible::after,
+.column-resizer.is-resizing::after {
+  width: 2px;
+  background: #2a7dca;
+}
+
+.column-resizer:focus-visible {
+  outline: none;
+}
+
+.table-frame.is-resizing,
+.table-frame.is-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 th:first-child,
@@ -769,7 +812,7 @@ td:last-child {
 }
 
 td {
-  height: 32px;
+  height: 34px;
   padding: 0 11px;
   color: #334155;
   border-right: 1px solid #edf0f4;
@@ -826,11 +869,11 @@ tbody tr.is-blocked td {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 23px;
+  min-height: 22px;
   border: 1px solid;
   border-radius: 5px;
   padding: 1px 7px;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -853,46 +896,26 @@ tbody tr.is-blocked td {
   background: #fff0f1;
 }
 
-.validation-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.validation-inline--blocked,
-.validation-icon--blocked {
-  color: var(--red);
-}
-
-.validation-inline--warning {
-  color: var(--orange);
-}
-
-.validation-icon {
-  display: inline-grid;
-  place-items: center;
-  font-size: 19px;
-}
-
-.validation-icon--ok { color: #179248; }
-.validation-icon--review { color: #ef7900; }
-
 .validation-pill {
-  color: #df2638;
-  border-color: #ff9da6;
-  background: #fff;
+  min-width: 56px;
 }
 
-.validation-pill--duplicate {
-  color: #8c4b00;
-  border-color: #e9bd88;
-  background: #fff7ed;
+.validation-pill--eligible {
+  color: #16723a;
+  border-color: #9dd7aa;
+  background: #edf8ef;
 }
 
 .validation-pill--warning {
-  color: #a34d00;
-  border-color: #efbd83;
-  background: #fff8ef;
+  color: #e36b00;
+  border-color: #ffc181;
+  background: #fff3e6;
+}
+
+.validation-pill--blocked {
+  color: #d92335;
+  border-color: #ff9da6;
+  background: #fff0f1;
 }
 
 .preview-pane {
@@ -905,7 +928,7 @@ tbody tr.is-blocked td {
 
 .preview-heading {
   margin-bottom: 20px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   color: #1f2937;
 }
@@ -996,7 +1019,7 @@ tbody tr.is-blocked td {
   border: 1px solid currentColor;
   border-radius: 4px;
   padding: 0 3px;
-  font-size: 9.5px;
+  font-size: 10.5px;
   line-height: 16px;
   text-align: center;
 }
@@ -1013,7 +1036,7 @@ tbody tr.is-blocked td {
 .mail-signature {
   color: #222c3a;
   font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
-  font-size: 14px;
+  font-size: 13.5px;
   line-height: 1.5;
 }
 
@@ -1055,9 +1078,9 @@ tbody tr.is-blocked td {
 }
 
 .create-button {
-  width: 280px;
-  height: 44px;
-  font-size: 16px;
+  width: 260px;
+  height: 40px;
+  font-size: 14px;
 }
 
 .popover {
@@ -1393,7 +1416,7 @@ tbody tr.is-blocked td {
 .excel-import-header h2 {
   margin: 0;
   color: #1f2c3e;
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .excel-import-header p {
@@ -1482,7 +1505,7 @@ tbody tr.is-blocked td {
 
 .excel-preview-heading span {
   color: #758196;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .excel-preview-frame {
@@ -1500,7 +1523,7 @@ tbody tr.is-blocked td {
   border-spacing: 0;
   table-layout: fixed;
   color: #3d4b5f;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .excel-preview-table th,
@@ -1609,7 +1632,7 @@ tbody tr.is-blocked td {
 }
 
 .settings-header h2 {
-  font-size: 20px;
+  font-size: 18px;
 }
 
 .settings-header p,
@@ -1675,7 +1698,7 @@ tbody tr.is-blocked td {
 }
 
 .settings-section h3 {
-  font-size: 17px;
+  font-size: 16px;
 }
 
 .settings-action {
@@ -1746,7 +1769,7 @@ tbody tr.is-blocked td {
 .safety-rule small {
   overflow: hidden;
   color: #778394;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1760,7 +1783,7 @@ tbody tr.is-blocked td {
   padding: 3px 8px;
   color: #607084;
   background: #f7f9fb;
-  font-size: 10.5px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -1833,7 +1856,7 @@ tbody tr.is-blocked td {
 .settings-note {
   margin: 14px 0 0;
   color: #778394;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -1901,7 +1924,7 @@ tbody tr.is-blocked td {
 
 .safety-tier p {
   margin: 6px 0 0 28px;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -1961,7 +1984,7 @@ tbody tr.is-blocked td {
   border-top: 1px solid #dfe5ec;
   color: #7b8796;
   background: #fafbfd;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .toast {
@@ -2060,7 +2083,7 @@ tbody tr.is-blocked td {
   }
 
   td {
-    height: 30px;
+    height: 32px;
   }
 
   .preview-pane {
@@ -2073,7 +2096,7 @@ tbody tr.is-blocked td {
 
   .preview-metadata {
     gap: 8px;
-    font-size: 12px;
+    font-size: 12.5px;
   }
 
   .preview-divider {
@@ -2096,9 +2119,9 @@ tbody tr.is-blocked td {
   }
 
   .create-button {
-    width: 250px;
-    height: 40px;
-    font-size: 15px;
+    width: 240px;
+    height: 38px;
+    font-size: 14px;
   }
 
   .excel-import-dialog {

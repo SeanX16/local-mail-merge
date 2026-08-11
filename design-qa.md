@@ -5,6 +5,9 @@
 - source visual truth path: `docs/design/mockups/local-mail-merge-vA2-custom-columns-and-filters.png`
 - implementation screenshot path: `docs/design/implementation/local-mail-merge-electron-compact-1366x768-normalized.png`
 - latest implementation screenshot path: `docs/design/implementation/local-mail-merge-signature-ui-1366x768-normalized.png`
+- table interaction screenshot path: `docs/design/implementation/local-mail-merge-table-validation-resize-1366x768-normalized.png`
+- validation label screenshot path: `docs/design/implementation/local-mail-merge-validation-labels-1366x768-normalized.png`
+- dimmed settings screenshot path: `docs/design/implementation/local-mail-merge-settings-dimmed-1366x768-normalized.png`
 - custom dropdown screenshots:
   - `docs/design/implementation/local-mail-merge-account-menu-1366x768-normalized.png`
   - `docs/design/implementation/local-mail-merge-signature-menu-1366x768-normalized.png`
@@ -27,6 +30,10 @@
 ## Findings
 
 - 没有剩余可执行的 P0、P1 或 P2 差异。
+- 本轮把内置“校验结果”统一渲染为绿色“可创建”、橙色“警告”和红色“已拦截”，不再依赖交接包可选的“审核状态”字段。右侧滚动后的表格截图确认三种标签在同一列中对齐，长内容仍保持单行省略。
+- 表头列边界增加了 7 px 可拖拽命中区，拖动时显示企业蓝定位线；字段筛选支持按钮再次点击收起，以及点击弹层外任意页面区域自动关闭。
+- 主界面、邮件预览、导入弹窗和设置页的基础字号收敛到 12–14 px，主要按钮收敛到 38–42 px 高；表格正文提升到 12.5 px，避免此前局部 9.5–11.5 px 与默认 16 px 控件混用造成的不协调。
+- 设置打开时，渲染区域与 Electron 原生标题栏覆盖层同步切换为压暗色；关闭设置后恢复。`capturePage()` 仍不包含 Windows 原生按钮，但 IPC 冒烟测试已验证开关状态随设置打开/关闭正确切换。
 - 本轮增量没有改变方案 A2 的主页面比例、表格密度或预览层级。路径省略发生在目录中部，`Q2_Transition_Handoff_20250515.json` 完整保留；两个顶部下拉均使用同一套非原生弹层样式。
 - [P3] 批准的方案 A2 是 1581 × 995，本轮实现验收是 1366 × 768，两者纵横比不同。
   - Location: 整体工作区。
@@ -60,6 +67,9 @@
 - full-view comparison: `docs/design/implementation/qa-full-reference-left-implementation-right.png`（左为设计稿，右为实现）
 - compact laptop comparison: `docs/design/implementation/qa-compact-source-left-implementation-right.png`（左为 1581 × 995 方案 A2，右为 1366 × 768 紧凑实现）
 - current main comparison: `docs/design/implementation/qa-previous-left-signature-ui-right.png`（左为此前已通过的 1366 × 768 方案 A2 实现，右为本轮路径、账户和邮件签名增量实现）
+- table interaction comparison: `docs/design/implementation/qa-source-left-table-validation-resize-right.png`（左为方案 A2，右为本轮统一字号、表头交互与紧凑表格实现）
+- validation label comparison: `docs/design/implementation/qa-source-left-validation-labels-right.png`（左为方案 A2，右为横向滚动至内置“校验结果”列后的三档固定标签）
+- settings density comparison: `docs/design/implementation/qa-previous-settings-left-current-dimmed-right.png`（左为此前已通过的设置页，右为本轮统一字号与遮罩后的设置页）
 - custom dropdown comparison: `docs/design/implementation/qa-account-menu-left-signature-menu-right.png`（左为账户下拉，右为邮件签名下拉；用于核对同一位置、密度、选中态、阴影及底部分隔操作）
 - tiered validation comparison: `docs/design/implementation/qa-compact-warning-confirm-left-safety-right.png`（左为警告记录创建确认，右为设置中的分级规则）
 - Excel import full-view comparison: `docs/design/implementation/qa-import-dialog-source-left-implementation-right.png`（左为批准的方案 A2，右为导入弹窗实现）
@@ -99,12 +109,17 @@
    - User request: 路径中间省略但保留完整文件名；“公司模板”统一改为“邮件签名”；账户和签名使用非 Windows 原生下拉；签名菜单底部增加分隔的“添加新签名”。
    - Fix: 新增目录可收缩、文件名固定显示的路径布局；账户和签名改为可访问的 React 自定义下拉；“添加新签名”直接打开邮件签名设置页；同步主页面、设置、对话框及错误提示术语。
    - Post-fix evidence: `docs/design/implementation/qa-previous-left-signature-ui-right.png`、`docs/design/implementation/qa-account-menu-left-signature-menu-right.png` 和邮件签名设置截图。
+9. Table interaction and typography iteration: 首次实现后自动化与并排视觉检查均未发现可执行的 P0、P1 或 P2 差异。
+   - User request: 内置校验结果使用三档固定标签；列宽可拖拽；筛选点击外部关闭；全局字号和控件密度统一；设置遮罩覆盖原生标题栏按钮。
+   - Fix: 校验结果改为绿/橙/红语义标签；TanStack Table 使用 `onChange` 列宽模式并增加表头拖拽条；筛选弹层监听外部 `pointerdown`；统一基础字号与主要控件尺寸；通过受限 IPC 调用 `BrowserWindow.setTitleBarOverlay()` 同步标题栏颜色。
+   - Post-fix evidence: `docs/design/implementation/qa-source-left-table-validation-resize-right.png`、`docs/design/implementation/qa-source-left-validation-labels-right.png`、`docs/design/implementation/qa-previous-settings-left-current-dimmed-right.png`；33 项开发态交互检查全部通过。
 
 ## Functional evidence
 
 - primary interactions tested: 字段管理打开/关闭、显示字段增减、目标岗位筛选打开/应用、点击行更新邮件预览、邮件签名下拉框加载、设置打开/切换三页/关闭、已拦截原因显示、创建草稿确认框打开/关闭。
 - latest incremental smoke result: `docs/design/implementation/electron-signature-ui-smoke.json`，路径结构、自定义账户下拉、自定义邮件签名下拉、“添加新签名”跳转及原有核心流程共 26 项全部通过，`consoleErrors: []`。
-- packaged v0.1.2 smoke result: `docs/design/implementation/packaged-signature-ui-smoke.json`，从新生成的便携 ZIP 独立解压后运行，26 项全部通过，`consoleErrors: []`；可执行文件版本为 `0.1.2`。
+- current table interaction smoke result: `docs/design/implementation/electron-table-interactions-smoke.json`，三档校验标签、拖拽列宽、筛选外部点击关闭、设置标题栏遮罩开关及原有核心流程共 33 项全部通过，`consoleErrors: []`。
+- packaged v0.1.3 smoke result: `src/LocalMailMerge.Desktop/out/qa/packaged-smoke-v0.1.3.json`，从新生成的便携 ZIP 独立解压后运行，33 项全部通过，`consoleErrors: []`；可执行文件版本为 `0.1.3`。
 - development smoke result: `docs/design/implementation/electron-compact-validation-smoke.json`，20 项核心交互全部通过，`consoleErrors: []`。
 - packaged EXE smoke result: `docs/design/implementation/packaged-compact-validation-smoke.json`，20 项核心交互全部通过，`consoleErrors: []`。
 - Excel import dialog development smoke: `docs/design/implementation/electron-import-dialog-smoke.json`，Sheet 列表、自动推荐、预览、切换和关闭均通过。
@@ -112,7 +127,7 @@
 - packaged template catalog result: `docs/design/implementation/packaged-template-catalog-smoke.json`，导入复制、设为当前项、删除均通过。
 - packaged multi-sheet import smoke: `docs/design/implementation/packaged-multisheet-import-smoke.json`，全部界面交互通过且 `consoleErrors: []`。
 - console errors checked: 开发态和打包态均为 `consoleErrors: []`。
-- data/worker check: Core 回归测试 6/6 通过。打包版 Worker 对用户提供的 6 工作表人才清单选择 `Talent List` 第 1 行后读取 737 人：644 条可创建且均作为警告记录供人工选择，93 条因缺少或无效邮箱硬拦截；没有修改原始工作簿。
+- data/worker check: Core 回归测试 7/7 通过。打包版 Worker 对用户提供的 6 工作表人才清单选择 `Talent List` 第 1 行后读取 737 人：644 条可创建且均作为警告记录供人工选择，93 条因缺少或无效邮箱硬拦截；没有修改原始工作簿。
 - Outlook environment check: 当前测试机未检测到经典 Outlook；设置页会显示检测失败/空状态，创建草稿前仍会再次校验账户。此环境结果不影响演示态视觉验收。
 
 ## Implementation checklist
@@ -130,5 +145,10 @@
 - [x] 完成开发态、打包态、签名目录、Core 回归和视觉对比验收。
 - [x] 1366 × 768 下完成主界面、弹层、确认框和设置页紧凑布局验收。
 - [x] 分级校验、警告记录手动选择、硬拦截禁选与创建前警告汇总验收。
+- [x] 内置校验结果固定渲染为“可创建 / 警告 / 已拦截”三档语义标签。
+- [x] 表头拖拽调整列宽及双击恢复默认宽度。
+- [x] 筛选弹层点击页面外部自动关闭，按钮再次点击也可收起。
+- [x] 主界面、表格、邮件预览、导入和设置页字体及控件密度统一。
+- [x] 设置弹窗打开/关闭时同步压暗/恢复 Electron 原生标题栏覆盖层。
 
 final result: passed

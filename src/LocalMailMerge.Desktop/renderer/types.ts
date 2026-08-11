@@ -95,6 +95,7 @@ export interface DesktopApi {
   minimize(): Promise<void>;
   toggleMaximize(): Promise<void>;
   close(): Promise<void>;
+  setModalState(active: boolean): Promise<boolean>;
   openOutlook(): Promise<void>;
 }
 
