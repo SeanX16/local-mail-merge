@@ -12,7 +12,15 @@ contextBridge.exposeInMainWorld('desktopApi', {
   openTemplateFolder: (): Promise<void> => ipcRenderer.invoke('templates:open-folder'),
   createDrafts: (payload: unknown): Promise<unknown> => ipcRenderer.invoke('worker:create-drafts', payload),
   minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
-  toggleMaximize: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
+  toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggle-maximize'),
+  isMaximized: (): Promise<boolean> => ipcRenderer.invoke('window:is-maximized'),
+  onMaximizedChange: (listener: (maximized: boolean) => void): void => {
+    ipcRenderer.removeAllListeners('window:maximized-changed');
+    ipcRenderer.on('window:maximized-changed', (_event, maximized: boolean) => listener(maximized));
+  },
+  offMaximizedChange: (): void => {
+    ipcRenderer.removeAllListeners('window:maximized-changed');
+  },
   close: (): Promise<void> => ipcRenderer.invoke('window:close'),
   setModalState: (active: boolean): Promise<boolean> => ipcRenderer.invoke('window:set-modal-state', active),
   openOutlook: (): Promise<void> => ipcRenderer.invoke('shell:open-outlook')

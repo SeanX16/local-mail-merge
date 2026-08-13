@@ -1,196 +1,45 @@
-import {
-  type ChangeEvent,
-  type DragEvent,
-  type MouseEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react';
-import { createPortal } from 'react-dom';
+import { useEffect, useMemo, useState } from 'react';
 import {
   type ColumnDef,
   type ColumnFiltersState,
   type ColumnOrderState,
   type RowSelectionState,
   type VisibilityState,
-  flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getSortedRowModel,
   useReactTable
 } from '@tanstack/react-table';
-import DOMPurify from 'dompurify';
+import { AlertCircle, ArrowUpDown, FileStack, Loader2, TriangleAlert } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
-  Add20Regular,
-  ArrowSort16Regular,
-  Checkmark16Regular,
-  CheckmarkCircle24Regular,
-  ChevronDown16Regular,
-  Dismiss16Regular,
-  Dismiss20Regular,
-  DocumentBulletList20Regular,
-  ErrorCircle24Regular,
-  Filter16Regular,
-  FolderOpen24Regular,
-  Info20Regular,
-  Mail20Regular,
-  MailMultiple24Filled,
-  Options20Regular,
-  People24Regular,
-  ReOrderDotsVertical16Regular,
-  Search20Regular,
-  Settings20Regular,
-  Warning24Regular
-} from '@fluentui/react-icons';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Toaster } from '@/components/ui/sonner';
+import { toast } from 'sonner';
 import { demoBatch } from './demoData';
 import { ExcelImportDialog } from './ExcelImportDialog';
 import { SettingsDialog, type SettingsTab } from './SettingsDialog';
+import { ColumnFilterMenu, ReviewBadge, ValidationBadge } from './features/mail-merge/MailMergeControls';
+import { MailMergeWorkspace, type StatusMode } from './features/mail-merge/MailMergeWorkspace';
 import type {
   BatchViewModel,
-  FieldDefinition,
   MailRecord,
   OutlookAccount,
   TemplateState,
   XlsxImportOptions,
   XlsxWorkbookInspection
 } from './types';
-
-type StatusMode = 'all' | 'creatable' | 'eligible' | 'review' | 'duplicate' | 'blocked' | 'selected';
-
-interface AnchorPosition {
-  left: number;
-  top: number;
-  width: number;
-}
-
-interface CommandDropdownOption {
-  id: string;
-  label: string;
-  description?: string;
-}
-
-function MiddleEllipsisPath({ value }: { value: string }) {
-  const slashIndex = Math.max(value.lastIndexOf('\\'), value.lastIndexOf('/'));
-  const directory = slashIndex >= 0 ? value.slice(0, slashIndex) : '';
-  const separator = slashIndex >= 0 ? value[slashIndex] : '';
-  const fileName = slashIndex >= 0 ? value.slice(slashIndex + 1) : value;
-
-  return (
-    <span className="path-copy">
-      {directory ? <span className="path-directory">{directory}</span> : null}
-      {separator ? <span className="path-separator">{separator}</span> : null}
-      <span className="path-filename">{fileName}</span>
-    </span>
-  );
-}
-
-function CommandDropdown({
-  id,
-  value,
-  placeholder,
-  options,
-  disabled = false,
-  defaultOpen = false,
-  kind,
-  onChange,
-  action
-}: {
-  id: string;
-  value: string;
-  placeholder: string;
-  options: CommandDropdownOption[];
-  disabled?: boolean;
-  defaultOpen?: boolean;
-  kind: 'account' | 'signature';
-  onChange: (id: string) => void;
-  action?: { label: string; onSelect: () => void };
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const selected = options.find((option) => option.id === value);
-
-  useEffect(() => {
-    function closeFromOutside(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    function closeFromEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false);
-    }
-    document.addEventListener('pointerdown', closeFromOutside);
-    document.addEventListener('keydown', closeFromEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeFromOutside);
-      document.removeEventListener('keydown', closeFromEscape);
-    };
-  }, []);
-
-  return (
-    <div ref={rootRef} className={`command-dropdown command-dropdown--${kind} ${open ? 'is-open' : ''}`}>
-      <button
-        id={id}
-        type="button"
-        className="command-dropdown__trigger"
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-        data-testid={`${kind}-dropdown-trigger`}
-      >
-        <span>{selected?.label ?? placeholder}</span>
-        <ChevronDown16Regular aria-hidden="true" />
-      </button>
-      {open && !disabled ? (
-        <div className="command-dropdown__menu" role="listbox" aria-label={kind === 'account' ? '选择 Outlook 账户' : '选择邮件签名'} data-testid={`${kind}-dropdown-menu`}>
-          <div className="command-dropdown__options">
-            {options.map((option) => (
-              <button
-                type="button"
-                className={`command-dropdown__option ${option.id === value ? 'is-selected' : ''}`}
-                key={option.id}
-                role="option"
-                aria-selected={option.id === value}
-                data-testid={`${kind}-dropdown-option`}
-                onClick={() => {
-                  onChange(option.id);
-                  setOpen(false);
-                }}
-              >
-                <span className="command-dropdown__check">{option.id === value ? <Checkmark16Regular aria-hidden="true" /> : null}</span>
-                <span className="command-dropdown__option-copy">
-                  <strong>{option.label}</strong>
-                  {option.description && option.description !== option.label ? <small>{option.description}</small> : null}
-                </span>
-              </button>
-            ))}
-          </div>
-          {action ? (
-            <div className="command-dropdown__action-wrap">
-              <button
-                type="button"
-                className="command-dropdown__action"
-                data-testid={`${kind}-dropdown-action`}
-                onClick={() => {
-                  setOpen(false);
-                  action.onSelect();
-                }}
-              >
-                <Add20Regular aria-hidden="true" />
-                <span>{action.label}</span>
-              </button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 const fallbackAccount: OutlookAccount = {
   index: 1,
@@ -228,8 +77,7 @@ const previewXlsxInspection: XlsxWorkbookInspection = {
         { rowNumber: 2, values: ['demo_001', 'James Anderson', 'James', 'Anderson', 'james.anderson@example.test', 'Example University', 'Graphics Lab', 'Postdoc', 'Postdoctoral Fellow', 'Accepted'] },
         { rowNumber: 3, values: ['demo_002', 'Emily Brown', 'Emily', 'Brown', 'emily.brown@example.test', 'Demo Institute', 'Video Lab', 'RA', 'Research Assistant', 'Accepted'] },
         { rowNumber: 4, values: ['demo_003', 'Michael Chen', 'Michael', 'Chen', 'michael.chen@example.test', 'Sample University', 'Data Science', 'RAP', 'Research Assistant Professor', 'Needs Review'] },
-        { rowNumber: 5, values: ['demo_004', 'Sarah Davis', 'Sarah', 'Davis', 'Unknown', 'Example University', 'UX Lab', 'Postdoc', 'Postdoctoral Fellow', 'Needs Review'] },
-        { rowNumber: 6, values: ['demo_005', 'David Wilson', 'David', 'Wilson', 'david.wilson@example.test', 'Demo Institute', 'Audio Lab', 'RA', 'Research Assistant', 'Accepted'] }
+        { rowNumber: 5, values: ['demo_004', 'Sarah Davis', 'Sarah', 'Davis', 'Unknown', 'Example University', 'UX Lab', 'Postdoc', 'Postdoctoral Fellow', 'Needs Review'] }
       ]
     },
     { name: 'Evidence', index: 2, rowCount: 328, columnCount: 7, suggestedHeaderRowNumber: 1, dataRowCount: 327, previewRows: [{ rowNumber: 1, values: ['Person ID', 'Full Name', 'University', 'Job Category', 'Primary Source URL', 'Email Status', 'Collection Date'] }] },
@@ -243,241 +91,6 @@ function safeMessage(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败，请重试。';
 }
 
-function bodyMarkup(record: MailRecord): string {
-  if (record.bodyHtml.trim()) {
-    return DOMPurify.sanitize(record.bodyHtml, {
-      ALLOWED_TAGS: ['p', 'br', 'div', 'span', 'strong', 'b', 'em', 'i', 'ul', 'ol', 'li', 'a'],
-      ALLOWED_ATTR: ['href', 'title'],
-      ALLOW_DATA_ATTR: false
-    });
-  }
-  return record.bodyText
-    .split(/\n{2,}/)
-    .map((paragraph) => `<p>${DOMPurify.sanitize(paragraph).replaceAll('\n', '<br>')}</p>`)
-    .join('');
-}
-
-function ReviewPill({ value }: { value: string }) {
-  const normalized = value.toLowerCase();
-  const kind = normalized.includes('批准') && !normalized.includes('未')
-    ? 'approved'
-    : 'review';
-  return <span className={`review-pill review-pill--${kind}`}>{value}</span>;
-}
-
-function ValidationCell({ record }: { record: MailRecord }) {
-  const tone = record.validationKind === 'eligible'
-    ? 'eligible'
-    : record.validationKind === 'review' && record.canCreate
-      ? 'warning'
-      : 'blocked';
-  const label = tone === 'eligible' ? '可创建' : tone === 'warning' ? '警告' : '已拦截';
-  const detail = [record.validationText, record.validationDetail].filter(Boolean).join('：');
-  return <span className={`validation-pill validation-pill--${tone}`} title={detail}>{label}</span>;
-}
-
-function SummaryItem({
-  icon,
-  label,
-  value,
-  tone
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  tone: 'blue' | 'green' | 'orange' | 'red';
-}) {
-  return (
-    <div className="summary-item">
-      <span className={`summary-icon summary-icon--${tone}`}>{icon}</span>
-      <span className="summary-label">{label}</span>
-      <strong className={`summary-value summary-value--${tone}`}>{value}</strong>
-    </div>
-  );
-}
-
-function FieldManager({
-  anchor,
-  fields,
-  visibility,
-  order,
-  onVisibilityChange,
-  onOrderChange,
-  onReset,
-  onClose
-}: {
-  anchor: AnchorPosition;
-  fields: FieldDefinition[];
-  visibility: VisibilityState;
-  order: ColumnOrderState;
-  onVisibilityChange: (key: string, visible: boolean) => void;
-  onOrderChange: (order: ColumnOrderState) => void;
-  onReset: () => void;
-  onClose: () => void;
-}) {
-  const [query, setQuery] = useState('');
-  const [draggedKey, setDraggedKey] = useState<string | null>(null);
-  const fieldByKey = useMemo(() => new Map(fields.map((field) => [field.key, field])), [fields]);
-  const orderedFields = order.filter((key) => key !== '__select').map((key) => fieldByKey.get(key)).filter(Boolean) as FieldDefinition[];
-  const visibleFields = orderedFields.filter((field) => visibility[field.key] !== false);
-  const hiddenFields = orderedFields.filter((field) => visibility[field.key] === false);
-  const matches = (field: FieldDefinition) => field.label.toLowerCase().includes(query.trim().toLowerCase());
-
-  function dropBefore(targetKey: string) {
-    if (!draggedKey || draggedKey === targetKey) return;
-    const next = [...order];
-    const from = next.indexOf(draggedKey);
-    const to = next.indexOf(targetKey);
-    if (from < 0 || to < 0) return;
-    next.splice(from, 1);
-    next.splice(to, 0, draggedKey);
-    onOrderChange(next);
-    setDraggedKey(null);
-  }
-
-  return createPortal(
-    <div
-      className="popover field-manager"
-      style={{ left: anchor.left, top: anchor.top }}
-      role="dialog"
-      aria-label="字段管理"
-    >
-      <div className="popover-heading">
-        <strong>选择显示字段</strong>
-        <button className="icon-button icon-button--small" onClick={onClose} aria-label="关闭字段管理"><Dismiss16Regular /></button>
-      </div>
-      <label className="popover-search">
-        <Search20Regular aria-hidden="true" />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索字段" />
-      </label>
-      <div className="field-section-label">已显示字段 <span>（拖动调整顺序）</span></div>
-      <div className="field-list field-list--visible">
-        {visibleFields.filter(matches).map((field) => (
-          <label
-            className="field-row"
-            key={field.key}
-            draggable
-            onDragStart={() => setDraggedKey(field.key)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => dropBefore(field.key)}
-          >
-            <input
-              type="checkbox"
-              checked
-              onChange={(event) => onVisibilityChange(field.key, event.target.checked)}
-            />
-            <span>{field.label}</span>
-            <ReOrderDotsVertical16Regular className="drag-handle" aria-label="拖动排序" />
-          </label>
-        ))}
-      </div>
-      <div className="field-section-label field-section-label--hidden">可选字段 <span>（隐藏）</span></div>
-      <div className="field-list field-list--hidden">
-        {hiddenFields.filter(matches).map((field) => (
-          <label className="field-row field-row--hidden" key={field.key}>
-            <input
-              type="checkbox"
-              checked={false}
-              onChange={(event) => onVisibilityChange(field.key, event.target.checked)}
-            />
-            <span>{field.label}</span>
-          </label>
-        ))}
-      </div>
-      <div className="popover-footer">
-        <button className="text-button" onClick={onReset}>恢复默认</button>
-        <button className="button button--primary button--compact" onClick={onClose}>完成</button>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-function FilterPopover({
-  anchor,
-  label,
-  values,
-  appliedValues,
-  onApply,
-  onClear,
-  onClose
-}: {
-  anchor: AnchorPosition;
-  label: string;
-  values: string[];
-  appliedValues: string[] | undefined;
-  onApply: (values: string[] | undefined) => void;
-  onClear: () => void;
-  onClose: () => void;
-}) {
-  const initial = appliedValues ?? values;
-  const initialKey = initial.join('\u0000');
-  const [selected, setSelected] = useState(() => new Set(initial));
-  const [query, setQuery] = useState('');
-  const popoverRef = useRef<HTMLDivElement>(null);
-  useEffect(() => setSelected(new Set(initial)), [initialKey]);
-  useEffect(() => {
-    function closeFromOutside(event: PointerEvent) {
-      if (!popoverRef.current?.contains(event.target as Node)) onClose();
-    }
-    document.addEventListener('pointerdown', closeFromOutside);
-    return () => document.removeEventListener('pointerdown', closeFromOutside);
-  }, [onClose]);
-  const filtered = values.filter((value) => value.toLowerCase().includes(query.trim().toLowerCase()));
-  const allSelected = selected.size === values.length;
-
-  function toggle(value: string, checked: boolean) {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (checked) next.add(value); else next.delete(value);
-      return next;
-    });
-  }
-
-  return createPortal(
-    <div
-      ref={popoverRef}
-      className="popover filter-popover"
-      style={{ left: Math.min(anchor.left, window.innerWidth - 218), top: anchor.top }}
-      role="dialog"
-      aria-label={`${label}筛选`}
-    >
-      <label className="popover-search">
-        <Search20Regular aria-hidden="true" />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索" />
-      </label>
-      <label className="filter-option filter-option--all">
-        <input
-          type="checkbox"
-          checked={allSelected}
-          ref={(node) => { if (node) node.indeterminate = selected.size > 0 && !allSelected; }}
-          onChange={(event) => setSelected(event.target.checked ? new Set(values) : new Set())}
-        />
-        <span>全选</span>
-      </label>
-      <div className="filter-options">
-        {filtered.map((value) => (
-          <label className="filter-option" key={value}>
-            <input type="checkbox" checked={selected.has(value)} onChange={(event) => toggle(value, event.target.checked)} />
-            <span title={value}>{value}</span>
-          </label>
-        ))}
-      </div>
-      <div className="filter-footer">
-        <button className="text-button text-button--muted" onClick={onClear}>清除筛选</button>
-        <span className="filter-footer-actions">
-          <button className="button button--ghost button--compact" onClick={onClose}>取消</button>
-          <button
-            className="button button--primary button--compact"
-            onClick={() => onApply(selected.size === values.length ? undefined : [...selected])}
-          >应用</button>
-        </span>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 export function App() {
   const [batch, setBatch] = useState<BatchViewModel>(demoBatch);
   const [accounts, setAccounts] = useState<OutlookAccount[]>(() => window.desktopApi ? [] : [fallbackAccount]);
@@ -488,6 +101,7 @@ export function App() {
   const [selectedTemplateId, setSelectedTemplateId] = useState(previewTemplateState.selectedTemplateId);
   const [statusMode, setStatusMode] = useState<StatusMode>('all');
   const [globalFilter, setGlobalFilter] = useState('');
+  const [debouncedGlobalFilter, setDebouncedGlobalFilter] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>(() => Object.fromEntries(
     demoBatch.records.filter((record) => record.initiallySelected).map((record) => [record.id, true])
@@ -497,25 +111,26 @@ export function App() {
   ));
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => ['__select', ...demoBatch.fields.map((field) => field.key)]);
   const [activeRecordId, setActiveRecordId] = useState(demoBatch.records[0]?.id ?? '');
-  const [fieldManagerAnchor, setFieldManagerAnchor] = useState<AnchorPosition | null>(null);
-  const [filterAnchor, setFilterAnchor] = useState<(AnchorPosition & { fieldKey: string }) | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [pendingXlsxImport, setPendingXlsxImport] = useState<{ filePath: string; inspection: XlsxWorkbookInspection } | null>(null);
-  const fieldManagerButtonRef = useRef<HTMLButtonElement>(null);
-  const referenceState = new URLSearchParams(window.location.search).get('referenceState') === '1';
+
   const queryParameters = new URLSearchParams(window.location.search);
+  const referenceState = queryParameters.get('referenceState') === '1';
   const settingsStateValue = queryParameters.get('settingsState');
   const settingsState: SettingsTab | null = settingsStateValue === 'outlook' || settingsStateValue === 'safety'
     ? settingsStateValue
     : settingsStateValue ? 'signatures' : null;
   const importState = queryParameters.get('importState') === '1';
   const warningState = queryParameters.get('warningState') === '1';
+  const warningPreviewState = queryParameters.get('warningPreviewState') === '1';
   const accountMenuState = queryParameters.get('accountMenuState') === '1';
   const signatureMenuState = queryParameters.get('signatureMenuState') === '1';
-  const settingsModalOpen = Boolean(settingsTab);
+  const fieldMenuState = queryParameters.get('fieldMenuState') === '1';
+  const filterMenuState = queryParameters.get('filterMenuState') === '1';
+  const statusMenuState = queryParameters.get('statusMenuState') === '1';
+  const selectedRowState = queryParameters.get('selectedRowState') === '1';
 
   useEffect(() => {
     void refreshAccounts(false);
@@ -525,7 +140,7 @@ export function App() {
         setTemplateState(state);
         setSelectedTemplateId(state.selectedTemplateId);
       })
-      .catch((error) => setNotice(safeMessage(error)));
+      .catch((error) => toast.error(safeMessage(error)));
   }, []);
 
   useEffect(() => {
@@ -535,15 +150,25 @@ export function App() {
   }, [settingsState]);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedGlobalFilter(globalFilter), 140);
+    return () => window.clearTimeout(timer);
+  }, [globalFilter]);
+
+  useEffect(() => {
+    if (!filterMenuState) return;
+    const countries = [...new Set(batch.records.map((record) => record.values.country ?? '').filter(Boolean))];
+    setColumnFilters([{ id: 'country', value: countries.slice(0, Math.max(0, countries.length - 2)) }]);
+  }, [batch.records, filterMenuState]);
+
+  useEffect(() => {
+    const settingsOpen = Boolean(settingsTab);
+    document.documentElement.dataset.titlebarDimmed = String(settingsOpen);
     if (!window.desktopApi?.setModalState) return;
-    document.documentElement.dataset.titlebarDimmed = String(settingsModalOpen);
-    void window.desktopApi.setModalState(settingsModalOpen).catch(() => {
+    void window.desktopApi.setModalState(settingsOpen).catch(() => {
       document.documentElement.dataset.titlebarDimmed = 'false';
     });
-    return () => {
-      if (settingsModalOpen) void window.desktopApi?.setModalState(false);
-    };
-  }, [settingsModalOpen]);
+    return () => { if (settingsOpen) void window.desktopApi?.setModalState(false); };
+  }, [settingsTab]);
 
   useEffect(() => {
     if (!importState) return;
@@ -555,34 +180,20 @@ export function App() {
   }, [importState]);
 
   useEffect(() => {
-    if (!warningState) return;
+    if (!warningPreviewState && !warningState) return;
     const timer = window.setTimeout(() => {
       const warningRecord = batch.records.find((record) => record.validationKind === 'review');
       if (!warningRecord) return;
       setActiveRecordId(warningRecord.id);
-      setRowSelection({ [warningRecord.id]: true });
-      setConfirmOpen(true);
+      if (warningState) {
+        const selected = Object.fromEntries(batch.records.filter((record) => record.canCreate).slice(0, 2).map((record) => [record.id, true]));
+        selected[warningRecord.id] = true;
+        setRowSelection(selected);
+        setConfirmOpen(true);
+      }
     }, 100);
     return () => window.clearTimeout(timer);
-  }, [batch.records, warningState]);
-
-  useEffect(() => {
-    if (!referenceState) return;
-    const timer = window.setTimeout(() => {
-      const fieldButton = fieldManagerButtonRef.current;
-      const filterButton = document.querySelector<HTMLButtonElement>('[data-filter-id="target_role"]');
-      if (fieldButton) {
-        const rect = fieldButton.getBoundingClientRect();
-        setFieldManagerAnchor({ left: rect.left, top: rect.bottom + 7, width: rect.width });
-      }
-      if (filterButton) {
-        const buttonRect = filterButton.getBoundingClientRect();
-        const headerRect = filterButton.closest('th')?.getBoundingClientRect() ?? buttonRect;
-        setFilterAnchor({ left: headerRect.left, top: buttonRect.bottom + 6, width: headerRect.width, fieldKey: 'target_role' });
-      }
-    }, 80);
-    return () => window.clearTimeout(timer);
-  }, [referenceState]);
+  }, [batch.records, warningPreviewState, warningState]);
 
   const filteredByStatus = useMemo(() => batch.records.filter((record) => {
     if (statusMode === 'all') return true;
@@ -595,89 +206,80 @@ export function App() {
   const columns = useMemo<ColumnDef<MailRecord>[]>(() => {
     const selection: ColumnDef<MailRecord> = {
       id: '__select',
-      size: 48,
+      size: 42,
       enableResizing: false,
       enableSorting: false,
       enableColumnFilter: false,
       header: ({ table }) => (
-        <input
+        <Checkbox
           className="row-checkbox"
-          type="checkbox"
           aria-label="选择当前可创建记录，包括有警告的记录"
-          checked={table.getIsAllRowsSelected()}
-          ref={(node) => { if (node) node.indeterminate = table.getIsSomeRowsSelected(); }}
-          onChange={table.getToggleAllRowsSelectedHandler()}
+          checked={table.getIsAllRowsSelected() ? true : table.getIsSomeRowsSelected() ? 'indeterminate' : false}
+          onCheckedChange={(checked) => table.toggleAllRowsSelected(checked === true)}
         />
       ),
       cell: ({ row }) => (
-        <input
+        <Checkbox
           className="row-checkbox"
-          type="checkbox"
           aria-label={`选择 ${row.original.recipientName}`}
           checked={row.getIsSelected()}
           disabled={!row.getCanSelect()}
           onClick={(event) => event.stopPropagation()}
-          onChange={row.getToggleSelectedHandler()}
+          onCheckedChange={(checked) => row.toggleSelected(checked === true)}
         />
       )
     };
 
-    const dynamic = batch.fields.map<ColumnDef<MailRecord>>((field) => ({
-      id: field.key,
-      accessorFn: (record) => record.values[field.key] ?? '',
-      size: field.width,
-      minSize: field.label === '校验结果' ? 96 : Math.min(76, field.width),
-      maxSize: 560,
-      enableResizing: true,
-      filterFn: (row, columnId, filterValue: string[]) => !filterValue?.length || filterValue.includes(String(row.getValue(columnId))),
-      header: ({ column }) => {
-        const activeFilter = column.getFilterValue() as string[] | undefined;
-        return (
-          <div className="column-heading">
-            <button className="column-sort" onClick={column.getToggleSortingHandler()} title={`按${field.label}排序`}>
-              <span>{field.label}</span>
-              {column.getIsSorted() ? <ArrowSort16Regular aria-label="已排序" /> : null}
-            </button>
-            <button
-              className={`column-filter-button${activeFilter?.length ? ' is-active' : ''}`}
-              data-filter-id={field.key}
-              aria-label={`筛选${field.label}`}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                const buttonRect = event.currentTarget.getBoundingClientRect();
-                const headerRect = event.currentTarget.closest('th')?.getBoundingClientRect() ?? buttonRect;
-                const next = { left: headerRect.left, top: buttonRect.bottom + 6, width: headerRect.width, fieldKey: field.key };
-                setFilterAnchor((current) => current?.fieldKey === field.key ? null : next);
-              }}
-            >
-              {activeFilter?.length ? <span className="filter-count">{activeFilter.length}</span> : null}
-              <Filter16Regular />
-            </button>
-          </div>
-        );
-      },
-      cell: ({ row, getValue }) => {
-        if (field.key === 'review_status') return <ReviewPill value={String(getValue())} />;
-        if (field.key === '__validation' || field.key === '__validation_result' || field.label === '校验结果') return <ValidationCell record={row.original} />;
-        return <span className="cell-text" title={String(getValue())}>{String(getValue())}</span>;
-      }
-    }));
+    const dynamic = batch.fields.map<ColumnDef<MailRecord>>((field) => {
+      const values = [...new Set(batch.records.map((record) => record.values[field.key] ?? '').filter(Boolean))];
+      return {
+        id: field.key,
+        accessorFn: (record) => record.values[field.key] ?? '',
+        size: field.width,
+        minSize: field.label === '校验结果' ? 92 : Math.min(76, field.width),
+        maxSize: 560,
+        enableResizing: true,
+        filterFn: (row, columnId, filterValue: string[]) => !filterValue?.length || filterValue.includes(String(row.getValue(columnId))),
+        header: ({ column }) => {
+          const activeFilter = column.getFilterValue() as string[] | undefined;
+          return (
+            <div className="column-heading">
+              <Button type="button" variant="ghost" size="sm" className="column-sort" onClick={column.getToggleSortingHandler()} title={`按${field.label}排序`}>
+                <span>{field.label}</span>
+                {column.getIsSorted() ? <ArrowUpDown data-icon="inline-end" aria-label="已排序" /> : null}
+              </Button>
+              <ColumnFilterMenu
+                fieldKey={field.key}
+                label={field.label}
+                values={values}
+                appliedValues={activeFilter}
+                defaultOpen={(referenceState && field.key === 'target_role') || (filterMenuState && field.key === 'country')}
+                onApply={(next) => column.setFilterValue(next)}
+              />
+            </div>
+          );
+        },
+        cell: ({ row, getValue }) => {
+          if (field.key === 'review_status') return <ReviewBadge value={String(getValue())} />;
+          if (field.key === '__validation' || field.key === '__validation_result' || field.label === '校验结果') return <ValidationBadge record={row.original} />;
+          return <span className="cell-text" title={String(getValue())}>{String(getValue())}</span>;
+        }
+      };
+    });
     return [selection, ...dynamic];
-  }, [batch.fields]);
+  }, [batch.fields, batch.records, filterMenuState, referenceState]);
 
   const table = useReactTable({
     data: filteredByStatus,
     columns,
-    state: { rowSelection, columnVisibility, columnOrder, columnFilters, globalFilter },
+    state: { rowSelection, columnVisibility, columnOrder, columnFilters, globalFilter: debouncedGlobalFilter },
     getRowId: (record) => record.id,
     enableRowSelection: (row) => row.original.canCreate,
     onRowSelectionChange: setRowSelection,
     onColumnVisibilityChange: setColumnVisibility,
     onColumnOrderChange: setColumnOrder,
     onColumnFiltersChange: setColumnFilters,
-    onGlobalFilterChange: setGlobalFilter,
-    columnResizeMode: 'onChange',
+    columnResizeMode: 'onEnd',
     globalFilterFn: (row, _columnId, value: string) => {
       const query = value.trim().toLowerCase();
       if (!query) return true;
@@ -689,16 +291,8 @@ export function App() {
   });
 
   const activeRecord = batch.records.find((record) => record.id === activeRecordId) ?? batch.records[0];
-  const activeValidationIssues = activeRecord
-    ? activeRecord.validationIssues
-      ?? activeRecord.validationDetail.split(/\r?\n/)
-        .map((line) => line.replace(/^\s*•\s*/, '').trim())
-        .filter(Boolean)
-        .map((message) => ({ message, severity: activeRecord.canCreate ? 'warning' as const : 'blocking' as const, code: 'detail' }))
-    : [];
   const selectedRecords = batch.records.filter((record) => rowSelection[record.id] && record.canCreate);
   const selectedWarningRecords = selectedRecords.filter((record) => record.validationKind === 'review');
-  const visibleFieldCount = batch.fields.filter((field) => columnVisibility[field.key] !== false).length;
   const aggregate = batch.aggregate ?? {
     total: batch.records.length,
     creatable: batch.records.filter((record) => record.canCreate).length,
@@ -708,14 +302,6 @@ export function App() {
     duplicate: batch.records.filter((record) => record.validationKind === 'duplicate').length,
     visible: table.getRowModel().rows.length
   };
-  const creatableCount = aggregate.creatable ?? batch.records.filter((record) => record.canCreate).length;
-  const blockedCount = aggregate.blocked ?? batch.records.filter((record) => !record.canCreate).length;
-
-  const filterField = filterAnchor ? batch.fields.find((field) => field.key === filterAnchor.fieldKey) : undefined;
-  const filterValues = filterField
-    ? [...new Set(batch.records.map((record) => record.values[filterField.key] ?? '').filter(Boolean))]
-    : [];
-  const filterColumn = filterField ? table.getColumn(filterField.key) : undefined;
 
   function resetForBatch(nextBatch: BatchViewModel) {
     setBatch(nextBatch);
@@ -725,12 +311,13 @@ export function App() {
     setActiveRecordId(nextBatch.records[0]?.id ?? '');
     setColumnFilters([]);
     setGlobalFilter('');
+    setDebouncedGlobalFilter('');
     setStatusMode('all');
   }
 
   async function importPackage() {
     if (!window.desktopApi) {
-      setNotice('当前是浏览器预览模式；Electron 版本中会打开系统文件选择器。');
+      toast.info('当前是浏览器预览模式；Electron 版本中会打开系统文件选择器。');
       return;
     }
     const filePath = await window.desktopApi.selectPackage();
@@ -743,7 +330,7 @@ export function App() {
       }
       await finishImport(filePath);
     } catch (error) {
-      setNotice(safeMessage(error));
+      toast.error(safeMessage(error));
     }
   }
 
@@ -756,10 +343,9 @@ export function App() {
       const creatable = imported.aggregate?.creatable ?? imported.records.filter((record) => record.canCreate).length;
       const warningCount = imported.aggregate?.review ?? imported.records.filter((record) => record.validationKind === 'review').length;
       const blocked = imported.aggregate?.blocked ?? imported.records.filter((record) => !record.canCreate).length;
-      const source = imported.sourceWorksheetName ? `（${imported.sourceWorksheetName}，第 ${imported.headerRowNumber} 行为字段）` : '';
-      setNotice(`已识别 ${imported.records.length} 条记录${source}；${creatable} 条可创建（其中 ${warningCount} 条有警告），${blocked} 条硬拦截。`);
+      toast.success(`已识别 ${imported.records.length} 条记录：${creatable} 条可创建，${warningCount} 条有警告，${blocked} 条硬拦截。`);
     } catch (error) {
-      setNotice(safeMessage(error));
+      toast.error(safeMessage(error));
       throw error;
     }
   }
@@ -773,13 +359,13 @@ export function App() {
       setAccounts(items);
       setSelectedAccountId((current) => items.some((item) => item.storeId === current) ? current : items[0]?.storeId ?? '');
       if (!items.length) setAccountError('没有检测到经典 Outlook 账户。');
-      if (announce) setNotice(items.length ? `已检测到 ${items.length} 个 Outlook 账户。` : '没有检测到经典 Outlook 账户。');
+      if (announce) toast[items.length ? 'success' : 'warning'](items.length ? `已检测到 ${items.length} 个 Outlook 账户。` : '没有检测到经典 Outlook 账户。');
     } catch (error) {
       const message = safeMessage(error);
       setAccounts([]);
       setSelectedAccountId('');
       setAccountError(message);
-      if (announce) setNotice(message);
+      if (announce) toast.error(message);
     } finally {
       setAccountsLoading(false);
     }
@@ -797,13 +383,13 @@ export function App() {
       setTemplateState(state);
       setSelectedTemplateId(state.selectedTemplateId);
     } catch (error) {
-      setNotice(safeMessage(error));
+      toast.error(safeMessage(error));
     }
   }
 
   async function importNewTemplate() {
     if (!window.desktopApi) {
-      setNotice('当前是浏览器预览模式；打包版会把所选签名复制到应用专用目录。');
+      toast.info('打包版会把所选签名复制到应用专用目录。');
       return;
     }
     try {
@@ -811,9 +397,9 @@ export function App() {
       if (!state) return;
       setTemplateState(state);
       setSelectedTemplateId(state.selectedTemplateId);
-      setNotice('签名已导入并设为当前签名。');
+      toast.success('签名已导入并设为当前签名。');
     } catch (error) {
-      setNotice(safeMessage(error));
+      toast.error(safeMessage(error));
     }
   }
 
@@ -823,38 +409,31 @@ export function App() {
       const state = await window.desktopApi.deleteTemplate(id);
       setTemplateState(state);
       setSelectedTemplateId(state.selectedTemplateId);
-      setNotice('已从应用签名库中删除。');
+      toast.success('已从应用签名库中删除。');
     } catch (error) {
-      setNotice(safeMessage(error));
+      toast.error(safeMessage(error));
     }
   }
 
   async function openTemplateFolder() {
     if (!window.desktopApi) {
-      setNotice('该目录只在 Electron 打包版中可用。');
+      toast.info('该目录只在 Electron 打包版中可用。');
       return;
     }
-    try {
-      await window.desktopApi.openTemplateFolder();
-    } catch (error) {
-      setNotice(safeMessage(error));
-    }
+    try { await window.desktopApi.openTemplateFolder(); } catch (error) { toast.error(safeMessage(error)); }
   }
 
   async function createDrafts() {
     if (!selectedRecords.length || creating) return;
     if (!window.desktopApi) {
       setConfirmOpen(false);
-      setNotice('演示模式不会写入 Outlook；正式 Electron 版本只会调用 Save() 创建草稿。');
+      toast.info('演示模式不会写入 Outlook；正式版本只调用 Save() 创建草稿。');
       return;
     }
     const account = accounts.find((item) => item.storeId === selectedAccountId);
-    if (!account) {
-      setNotice('请先选择 Outlook 发件账户。');
-      return;
-    }
+    if (!account) { toast.error('请先选择 Outlook 发件账户。'); return; }
     if (!selectedTemplateId || !templateState.templates.some((template) => template.id === selectedTemplateId)) {
-      setNotice('请先在设置中导入并选择邮件签名。');
+      toast.error('请先在设置中导入并选择邮件签名。');
       return;
     }
     setCreating(true);
@@ -867,295 +446,86 @@ export function App() {
         selectedPersonIds: selectedRecords.map((record) => record.personId),
         account
       });
-      setNotice(`已保存 ${selectedRecords.length} 封 Outlook 草稿。`);
+      toast.success(`已保存 ${selectedRecords.length} 封 Outlook 草稿。`);
       setConfirmOpen(false);
     } catch (error) {
-      setNotice(safeMessage(error));
+      toast.error(safeMessage(error));
     } finally {
       setCreating(false);
     }
   }
 
-  function changeFieldVisibility(key: string, visible: boolean) {
-    setColumnVisibility((current) => ({ ...current, [key]: visible }));
-  }
-
-  function resetFields() {
-    setColumnVisibility(Object.fromEntries(batch.fields.map((field) => [field.key, field.defaultVisible])));
-    setColumnOrder(['__select', ...batch.fields.map((field) => field.key)]);
-  }
-
-  function openFieldManager(event: MouseEvent<HTMLButtonElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    setFieldManagerAnchor((current) => current ? null : { left: rect.left, top: rect.bottom + 7, width: rect.width });
-  }
-
   return (
-    <div className="app-shell">
-      <header className="titlebar">
-        <div className="titlebar-brand">
-          <span className="titlebar-logo"><MailMultiple24Filled /></span>
-          <span>Local Mail Merge</span>
-        </div>
-        {!window.desktopApi ? (
-          <div className="browser-window-controls" aria-hidden="true"><span>—</span><span>□</span><span>×</span></div>
-        ) : null}
-      </header>
+    <>
+      <MailMergeWorkspace
+        batch={batch}
+        table={table}
+        aggregate={{
+          total: aggregate.total,
+          creatable: aggregate.creatable ?? batch.records.filter((record) => record.canCreate).length,
+          review: aggregate.review,
+          blocked: aggregate.blocked ?? batch.records.filter((record) => !record.canCreate).length
+        }}
+        accounts={accounts}
+        accountsLoading={accountsLoading}
+        selectedAccountId={selectedAccountId}
+        onAccountChange={setSelectedAccountId}
+        templateState={templateState}
+        selectedTemplateId={selectedTemplateId}
+        onTemplateChange={(id) => void chooseTemplate(id)}
+        onImportPackage={() => void importPackage()}
+        statusMode={statusMode}
+        onStatusModeChange={setStatusMode}
+        globalFilter={globalFilter}
+        onGlobalFilterChange={setGlobalFilter}
+        columnVisibility={columnVisibility}
+        columnOrder={columnOrder}
+        onFieldVisibilityChange={(key, visible) => setColumnVisibility((current) => ({ ...current, [key]: visible }))}
+        onColumnOrderChange={setColumnOrder}
+        onResetFields={() => {
+          setColumnVisibility(Object.fromEntries(batch.fields.map((field) => [field.key, field.defaultVisible])));
+          setColumnOrder(['__select', ...batch.fields.map((field) => field.key)]);
+        }}
+        activeRecord={activeRecord}
+        onActivateRecord={setActiveRecordId}
+        selectedCount={referenceState ? 9 : selectedRecords.length}
+        onOpenSettings={setSettingsTab}
+        onCreateDrafts={() => setConfirmOpen(true)}
+        accountMenuDefaultOpen={accountMenuState}
+        signatureMenuDefaultOpen={signatureMenuState}
+        fieldManagerDefaultOpen={fieldMenuState}
+        statusMenuDefaultOpen={statusMenuState}
+        selectedRowState={selectedRowState}
+        referenceVisibleCount={referenceState ? aggregate.visible : undefined}
+      />
 
-      <main className="app-main">
-        <section className="command-bar">
-          <button className="button button--primary import-button" onClick={importPackage}>
-            <FolderOpen24Regular />
-            <span>导入交接包</span>
-          </button>
-          <div className="path-box" title={batch.sourcePath}>
-            <MiddleEllipsisPath value={batch.sourcePath} />
-            <FolderOpen24Regular aria-hidden="true" />
-          </div>
-          <div className="command-field account-field">
-            <label htmlFor="account">Outlook 账户</label>
-            <CommandDropdown
-              id="account"
-              kind="account"
-              value={selectedAccountId}
-              placeholder={accountsLoading ? '正在检测…' : '未检测到账户'}
-              disabled={accountsLoading || !accounts.length}
-              defaultOpen={accountMenuState}
-              options={accounts.map((account) => ({
-                id: account.storeId,
-                label: account.smtpAddress || account.displayName,
-                description: account.displayName
-              }))}
-              onChange={setSelectedAccountId}
-            />
-          </div>
-          <div className="command-field template-field">
-            <label htmlFor="signature">邮件签名</label>
-            <CommandDropdown
-              id="signature"
-              kind="signature"
-              value={selectedTemplateId}
-              placeholder="请在设置中添加签名"
-              defaultOpen={signatureMenuState}
-              options={templateState.templates.map((template) => ({
-                id: template.id,
-                label: template.name,
-                description: template.fileName
-              }))}
-              onChange={(id) => void chooseTemplate(id)}
-              action={{ label: '添加新签名', onSelect: () => setSettingsTab('signatures') }}
-            />
-          </div>
-          <button className="icon-button" aria-label="关于"><Info20Regular /></button>
-          <button className="icon-button" aria-label="设置" onClick={() => setSettingsTab('signatures')}><Settings20Regular /></button>
-        </section>
-
-        <section className="summary-bar" aria-label="导入汇总">
-          <SummaryItem icon={<People24Regular />} label="共" value={aggregate.total} tone="blue" />
-          <SummaryItem icon={<CheckmarkCircle24Regular />} label="可创建" value={creatableCount} tone="green" />
-          <SummaryItem icon={<Warning24Regular />} label="其中有警告" value={aggregate.review} tone="orange" />
-          <SummaryItem icon={<ErrorCircle24Regular />} label="硬拦截" value={blockedCount} tone="red" />
-        </section>
-
-        <section className="workspace">
-          <div className="table-pane">
-            <div className="table-toolbar">
-              <div className="toolbar-row toolbar-row--primary">
-                <div className="select-wrap status-select">
-                  <select value={statusMode} onChange={(event: ChangeEvent<HTMLSelectElement>) => setStatusMode(event.target.value as StatusMode)}>
-                    <option value="all">全部状态</option>
-                    <option value="creatable">可创建（含警告）</option>
-                    <option value="eligible">无警告</option>
-                    <option value="review">有警告</option>
-                    <option value="duplicate">仅看重复</option>
-                    <option value="blocked">仅看已拦截</option>
-                    <option value="selected">仅看已选择</option>
-                  </select>
-                  <ChevronDown16Regular aria-hidden="true" />
-                </div>
-                <label className="global-search">
-                  <Search20Regular aria-hidden="true" />
-                  <input value={globalFilter} onChange={(event) => setGlobalFilter(event.target.value)} placeholder="搜索姓名或邮箱" />
-                </label>
-              </div>
-              <div className="toolbar-row toolbar-row--fields">
-                <button ref={fieldManagerButtonRef} className={`button button--secondary field-button${fieldManagerAnchor ? ' is-active' : ''}`} onClick={openFieldManager}>
-                  <Options20Regular />
-                  <span>字段管理</span>
-                </button>
-                <span className="field-count">显示 {visibleFieldCount} / {batch.fields.length} 个字段</span>
-                <span className="visible-count">当前显示 {referenceState ? aggregate.visible : table.getRowModel().rows.length} / {aggregate.total} 人</span>
-              </div>
-            </div>
-
-            <div className={`table-frame${table.getState().columnSizingInfo.isResizingColumn ? ' is-resizing' : ''}`}>
-              <div className="table-scroll">
-                <table style={{ width: table.getTotalSize() }}>
-                  <thead>
-                    {table.getHeaderGroups().map((headerGroup) => (
-                      <tr key={headerGroup.id}>
-                        {headerGroup.headers.map((header) => (
-                          <th key={header.id} style={{ width: header.getSize() }}>
-                            {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                            {header.column.getCanResize() ? (
-                              <div
-                                className={`column-resizer${header.column.getIsResizing() ? ' is-resizing' : ''}`}
-                                data-column-resizer={header.column.id}
-                                role="separator"
-                                tabIndex={0}
-                                aria-label={`调整${String(header.column.columnDef.id ?? '')}列宽`}
-                                aria-orientation="vertical"
-                                aria-valuemin={header.column.columnDef.minSize}
-                                aria-valuemax={header.column.columnDef.maxSize}
-                                aria-valuenow={header.column.getSize()}
-                                onDoubleClick={(event) => {
-                                  event.stopPropagation();
-                                  header.column.resetSize();
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-                                  event.preventDefault();
-                                  const minSize = header.column.columnDef.minSize ?? 20;
-                                  const maxSize = header.column.columnDef.maxSize ?? Number.MAX_SAFE_INTEGER;
-                                  const nextSize = Math.min(maxSize, Math.max(minSize, header.column.getSize() + (event.key === 'ArrowRight' ? 8 : -8)));
-                                  table.setColumnSizing((current) => ({ ...current, [header.column.id]: nextSize }));
-                                }}
-                                onMouseDown={header.getResizeHandler()}
-                                onTouchStart={header.getResizeHandler()}
-                              />
-                            ) : null}
-                          </th>
-                        ))}
-                      </tr>
-                    ))}
-                  </thead>
-                  <tbody>
-                    {table.getRowModel().rows.map((row) => (
-                      <tr
-                        key={row.id}
-                        className={`${row.original.id === activeRecord?.id ? 'is-active' : ''}${row.original.validationKind === 'review' ? ' is-warning' : ''}${!row.original.canCreate ? ' is-blocked' : ''}`}
-                        onClick={() => setActiveRecordId(row.original.id)}
-                      >
-                        {row.getVisibleCells().map((cell) => (
-                          <td key={cell.id} style={{ width: cell.column.getSize(), maxWidth: cell.column.getSize() }}>
-                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <aside className="preview-pane">
-            {activeRecord ? (
-              <>
-                <div className="preview-heading">邮件预览</div>
-                <dl className="preview-metadata">
-                  <div><dt>收件人：</dt><dd>{activeRecord.recipientName} &lt;{activeRecord.recipientEmail}&gt;</dd></div>
-                  <div><dt>主题：</dt><dd>{activeRecord.subject}</dd></div>
-                  <div><dt>附件：</dt><dd>Offer_Letter_{activeRecord.recipientName.replaceAll(' ', '_')}.pdf</dd></div>
-                </dl>
-                {activeRecord.validationKind !== 'eligible' ? (
-                  <div className={`validation-banner validation-banner--${activeRecord.canCreate ? 'warning' : 'blocked'}`} role="status">
-                    {activeRecord.canCreate ? <Warning24Regular aria-hidden="true" /> : <ErrorCircle24Regular aria-hidden="true" />}
-                    <div>
-                      <strong>{activeRecord.validationText}</strong>
-                      <ul>{activeValidationIssues.map((issue) => {
-                        const severity = issue.severity ?? (activeRecord.canCreate ? 'warning' : 'blocking');
-                        return (
-                          <li className={`validation-issue validation-issue--${severity}`} key={`${issue.code}:${issue.message}`}>
-                            <span>{severity === 'blocking' ? '拦截' : '警告'}</span>
-                            {issue.message}
-                          </li>
-                        );
-                      })}</ul>
-                    </div>
-                  </div>
-                ) : null}
-                <div className="preview-divider" />
-                <article className="mail-body" dangerouslySetInnerHTML={{ __html: bodyMarkup(activeRecord) }} />
-                <div className="mail-signature">
-                  <p>Best regards,</p>
-                  <p>Talent Acquisition Team<br />Example Company</p>
-                </div>
-              </>
-            ) : <div className="empty-preview"><Mail20Regular /><span>请选择一条记录预览邮件</span></div>}
-          </aside>
-        </section>
-
-        <footer className="footer-bar">
-          <strong>已选择 {referenceState ? 9 : selectedRecords.length} 人</strong>
-          <button className="button button--primary create-button" disabled={!selectedRecords.length || !selectedAccountId || !selectedTemplateId} onClick={() => setConfirmOpen(true)}>
-            创建所选草稿
-          </button>
-        </footer>
-      </main>
-
-      {fieldManagerAnchor ? (
-        <FieldManager
-          anchor={fieldManagerAnchor}
-          fields={batch.fields}
-          visibility={columnVisibility}
-          order={columnOrder}
-          onVisibilityChange={changeFieldVisibility}
-          onOrderChange={setColumnOrder}
-          onReset={resetFields}
-          onClose={() => setFieldManagerAnchor(null)}
-        />
-      ) : null}
-
-      {filterAnchor && filterField ? (
-        <FilterPopover
-          key={`${filterAnchor.fieldKey}-${filterAnchor.top}`}
-          anchor={filterAnchor}
-          label={filterField.label}
-          values={filterValues}
-          appliedValues={referenceState && filterAnchor.fieldKey === 'target_role'
-            ? filterValues.slice(0, 3)
-            : filterColumn?.getFilterValue() as string[] | undefined}
-          onApply={(values) => {
-            filterColumn?.setFilterValue(values);
-            setFilterAnchor(null);
-          }}
-          onClear={() => {
-            filterColumn?.setFilterValue(undefined);
-            setFilterAnchor(null);
-          }}
-          onClose={() => setFilterAnchor(null)}
-        />
-      ) : null}
-
-      {confirmOpen ? createPortal(
-        <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-            <div className="confirm-icon"><DocumentBulletList20Regular /></div>
-            <button className="icon-button confirm-close" onClick={() => setConfirmOpen(false)} aria-label="关闭"><Dismiss20Regular /></button>
-            <h2 id="confirm-title">创建 {selectedRecords.length} 封 Outlook 草稿？</h2>
-            <p>草稿会保存到所选账户的“草稿箱”，不会打开邮件窗口，也不会自动发送。</p>
-            <dl className="confirm-details">
-              <div><dt>发件账户</dt><dd>{accounts.find((item) => item.storeId === selectedAccountId)?.smtpAddress}</dd></div>
-              <div><dt>邮件签名</dt><dd>{templateState.templates.find((template) => template.id === selectedTemplateId)?.fileName ?? '未选择'}</dd></div>
-            </dl>
-            {selectedWarningRecords.length ? (
-              <div className="confirm-warning" role="status">
-                <Warning24Regular aria-hidden="true" />
-                <div>
-                  <strong>{selectedWarningRecords.length} 条记录含警告，仍会创建草稿</strong>
-                  <p>请在 Outlook 中逐封补充或确认相关内容后再手动发送。</p>
-                </div>
-              </div>
-            ) : null}
-            <div className="confirm-actions">
-              <button className="button button--ghost" onClick={() => setConfirmOpen(false)}>取消</button>
-              <button className="button button--primary" onClick={createDrafts} disabled={creating}>{creating ? '正在创建…' : '确认创建草稿'}</button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      ) : null}
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent className="confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogMedia><FileStack /></AlertDialogMedia>
+            <AlertDialogTitle>创建 {selectedRecords.length} 封 Outlook 草稿？</AlertDialogTitle>
+            <AlertDialogDescription>草稿会保存到所选账户的“草稿箱”，不会打开邮件窗口，也不会自动发送。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <dl className="confirm-details">
+            <div><dt>发件账户</dt><dd>{accounts.find((item) => item.storeId === selectedAccountId)?.smtpAddress}</dd></div>
+            <div><dt>邮件签名</dt><dd>{templateState.templates.find((template) => template.id === selectedTemplateId)?.fileName ?? '未选择'}</dd></div>
+          </dl>
+          {selectedWarningRecords.length ? (
+            <Alert className="confirm-warning">
+              <TriangleAlert aria-hidden="true" />
+              <AlertTitle>{selectedWarningRecords.length} 条记录含警告</AlertTitle>
+              <AlertDescription>仍会创建草稿，请在 Outlook 中补充或确认后再手动发送。</AlertDescription>
+            </Alert>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void createDrafts()} disabled={creating}>
+              {creating ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
+              {creating ? '正在创建…' : '确认创建草稿'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {settingsTab ? (
         <SettingsDialog
@@ -1182,12 +552,7 @@ export function App() {
         />
       ) : null}
 
-      {notice ? (
-        <div className="toast" role="status">
-          <span>{notice}</span>
-          <button className="icon-button icon-button--small" onClick={() => setNotice(null)} aria-label="关闭提示"><Dismiss16Regular /></button>
-        </div>
-      ) : null}
-    </div>
+      <Toaster position="bottom-right" />
+    </>
   );
 }

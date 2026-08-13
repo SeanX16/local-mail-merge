@@ -93,7 +93,10 @@ export interface DesktopApi {
   openTemplateFolder(): Promise<void>;
   createDrafts(payload: unknown): Promise<unknown>;
   minimize(): Promise<void>;
-  toggleMaximize(): Promise<void>;
+  toggleMaximize(): Promise<boolean>;
+  isMaximized(): Promise<boolean>;
+  onMaximizedChange(listener: (maximized: boolean) => void): void;
+  offMaximizedChange(): void;
   close(): Promise<void>;
   setModalState(active: boolean): Promise<boolean>;
   openOutlook(): Promise<void>;

@@ -5,7 +5,7 @@ import process from 'node:process';
 
 const require = createRequire(import.meta.url);
 const projectRoot = path.resolve(import.meta.dirname, '..');
-const viteBin = require.resolve('vite/bin/vite.js');
+const viteBin = path.resolve(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js');
 const electronPath = require('electron');
 const rendererUrl = 'http://127.0.0.1:4173';
 

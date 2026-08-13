@@ -1,11 +1,33 @@
 import { useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { CheckCircle2, FileSpreadsheet, Info, Loader2 } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
-  CheckmarkCircle20Regular,
-  ChevronDown16Regular,
-  Dismiss20Regular,
-  Table20Regular
-} from '@fluentui/react-icons';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from '@/components/ui/table';
 import type { XlsxImportOptions, XlsxPreviewRow, XlsxWorkbookInspection } from './types';
 
 export function ExcelImportDialog({
@@ -19,8 +41,7 @@ export function ExcelImportDialog({
   onConfirm: (options: XlsxImportOptions) => Promise<void>;
   onClose: () => void;
 }) {
-  const recommendedSheet = inspection.sheets.find((sheet) => sheet.name === inspection.recommendedWorksheetName)
-    ?? inspection.sheets[0];
+  const recommendedSheet = inspection.sheets.find((sheet) => sheet.name === inspection.recommendedWorksheetName) ?? inspection.sheets[0];
   const [worksheetName, setWorksheetName] = useState(recommendedSheet?.name ?? '');
   const [headerRowNumber, setHeaderRowNumber] = useState(recommendedSheet?.suggestedHeaderRowNumber ?? 1);
   const [busy, setBusy] = useState(false);
@@ -43,113 +64,75 @@ export function ExcelImportDialog({
   async function confirm() {
     if (!canConfirm || !sheet) return;
     setBusy(true);
-    try {
-      await onConfirm({ worksheetName: sheet.name, headerRowNumber });
-    } finally {
-      setBusy(false);
-    }
+    try { await onConfirm({ worksheetName: sheet.name, headerRowNumber }); } finally { setBusy(false); }
   }
 
-  return createPortal(
-    <div className="modal-backdrop excel-import-backdrop" role="presentation">
-      <section className="excel-import-dialog" role="dialog" aria-modal="true" aria-labelledby="excel-import-title">
-        <header className="excel-import-header">
-          <div className="excel-import-title-icon"><Table20Regular /></div>
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="excel-import-dialog" aria-describedby="excel-import-description">
+        <DialogHeader className="excel-import-header">
+          <span className="dialog-title-icon"><FileSpreadsheet /></span>
           <div>
-            <h2 id="excel-import-title">设置 Excel 导入</h2>
-            <p title={filePath}>{fileName}</p>
+            <DialogTitle>设置 Excel 导入</DialogTitle>
+            <DialogDescription id="excel-import-description" title={filePath}>{fileName}</DialogDescription>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="关闭 Excel 导入设置"><Dismiss20Regular /></button>
-        </header>
+        </DialogHeader>
 
-        <div className="excel-import-content">
-          <div className="excel-import-controls">
-            <label>
-              <span>选择人员数据所在的 Sheet</span>
-              <span className="select-wrap">
-                <select
-                  data-testid="excel-sheet-select"
-                  value={worksheetName}
-                  onChange={(event) => {
-                    const next = inspection.sheets.find((item) => item.name === event.target.value);
-                    setWorksheetName(event.target.value);
-                    if (next) setHeaderRowNumber(next.suggestedHeaderRowNumber);
-                  }}
-                >
-                  {inspection.sheets.map((item) => (
-                    <option key={item.name} value={item.name}>{item.name} · {item.rowCount} 行</option>
-                  ))}
-                </select>
-                <ChevronDown16Regular aria-hidden="true" />
-              </span>
-            </label>
-            <label>
-              <span>选择字段名称所在行</span>
-              <span className="select-wrap">
-                <select
-                  data-testid="excel-header-row-select"
-                  value={headerRowNumber}
-                  onChange={(event) => setHeaderRowNumber(Number(event.target.value))}
-                >
-                  {availableHeaderRows.map((row) => (
-                    <option key={row.rowNumber} value={row.rowNumber}>第 {row.rowNumber} 行</option>
-                  ))}
-                </select>
-                <ChevronDown16Regular aria-hidden="true" />
-              </span>
-            </label>
-          </div>
+        <FieldGroup className="excel-import-controls">
+          <Field>
+            <FieldLabel htmlFor="excel-sheet-select">人员数据所在的 Sheet</FieldLabel>
+            <Select value={worksheetName} onValueChange={(value) => {
+              const next = inspection.sheets.find((item) => item.name === value);
+              setWorksheetName(value);
+              if (next) setHeaderRowNumber(next.suggestedHeaderRowNumber);
+            }}>
+              <SelectTrigger id="excel-sheet-select" data-testid="excel-sheet-select" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent position="popper">
+                <SelectGroup>
+                  {inspection.sheets.map((item) => <SelectItem key={item.name} value={item.name}>{item.name} · {item.rowCount} 行</SelectItem>)}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="excel-header-row-select">字段名称所在行</FieldLabel>
+            <Select value={String(headerRowNumber)} onValueChange={(value) => setHeaderRowNumber(Number(value))}>
+              <SelectTrigger id="excel-header-row-select" data-testid="excel-header-row-select" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent position="popper">
+                <SelectGroup>
+                  {availableHeaderRows.map((row) => <SelectItem key={row.rowNumber} value={String(row.rowNumber)}>第 {row.rowNumber} 行</SelectItem>)}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
 
-          <div className={`excel-import-recommendation${isRecommended ? ' is-recommended' : ''}`}>
-            <CheckmarkCircle20Regular />
-            <span>{isRecommended
-              ? `已自动推荐：${sheet?.name}，第 ${headerRowNumber} 行作为字段名。`
-              : '已使用你的手动选择；请核对下方字段和数据预览。'}</span>
-          </div>
+        <Alert className={isRecommended ? 'excel-import-recommendation is-recommended' : 'excel-import-recommendation'}>
+          <CheckCircle2 />
+          <AlertTitle>{isRecommended ? '已应用自动推荐' : '已切换为手动选择'}</AlertTitle>
+          <AlertDescription>{isRecommended ? `${sheet?.name}，第 ${headerRowNumber} 行作为字段名。` : '请核对下方字段和数据预览。'}</AlertDescription>
+        </Alert>
 
-          <div className="excel-preview-heading">
-            <div>
-              <strong>数据预览</strong>
-              <span>蓝色一行为字段名，下方显示最前面的 5 条记录。</span>
-            </div>
-            <span>{preview.headers.length} 个字段</span>
-          </div>
-
-          <div className="excel-preview-frame">
-            {preview.headers.length ? (
-              <table className="excel-preview-table">
-                <thead>
-                  <tr>
-                    <th className="excel-row-number">行</th>
-                    {preview.headers.map((header, index) => <th key={`${header}:${index}`} title={header}>{header}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.rows.map((row) => (
-                    <tr key={row.rowNumber}>
-                      <td className="excel-row-number">{row.rowNumber}</td>
-                      {preview.headers.map((_, index) => <td key={index} title={row.values[index] ?? ''}>{row.values[index] ?? ''}</td>)}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div className="excel-preview-empty">所选行没有可用字段，请选择其他行。</div>
-            )}
-          </div>
+        <div className="excel-preview-heading">
+          <div><strong>数据预览</strong><span>字段行及最前面的 5 条数据</span></div>
+          <Badge variant="secondary">{preview.headers.length} 个字段</Badge>
+        </div>
+        <div className="excel-preview-frame">
+          {preview.headers.length ? (
+            <Table className="excel-preview-table" style={{ width: 52 + preview.headers.length * 144 }}>
+              <TableHeader><TableRow><TableHead className="excel-row-number">行</TableHead>{preview.headers.map((header, index) => <TableHead key={`${header}:${index}`} title={header}><span>{header}</span></TableHead>)}</TableRow></TableHeader>
+              <TableBody>
+                {preview.rows.map((row) => <TableRow key={row.rowNumber}><TableCell className="excel-row-number">{row.rowNumber}</TableCell>{preview.headers.map((_, index) => <TableCell key={index} title={row.values[index] ?? ''}><span>{row.values[index] || '—'}</span></TableCell>)}</TableRow>)}
+              </TableBody>
+            </Table>
+          ) : <div className="excel-preview-empty">所选行没有可用字段，请选择其他行。</div>}
         </div>
 
-        <footer className="excel-import-footer">
-          <span>预计导入 <strong>{estimatedDataRowCount}</strong> 条记录；导入后仍会逐行执行邮件安全校验。</span>
-          <div>
-            <button className="button button--ghost" disabled={busy} onClick={onClose}>取消</button>
-            <button className="button button--primary" data-testid="excel-import-confirm" disabled={!canConfirm} onClick={() => void confirm()}>
-              {busy ? '正在导入…' : '确认导入'}
-            </button>
-          </div>
-        </footer>
-      </section>
-    </div>,
-    document.body
+        <DialogFooter className="excel-import-footer">
+          <span><Info aria-hidden="true" />预计导入 <strong>{estimatedDataRowCount}</strong> 条记录，随后逐行执行安全校验。</span>
+          <div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={onClose}>取消</Button><Button data-testid="excel-import-confirm" disabled={!canConfirm} onClick={() => void confirm()}>{busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}{busy ? '正在导入' : '确认导入'}</Button></div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
