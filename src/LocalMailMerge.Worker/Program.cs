@@ -18,7 +18,7 @@ internal static class Program
         Console.InputEncoding = System.Text.Encoding.UTF8;
         if (args.Length != 1)
         {
-            Console.Error.WriteLine("用法：LocalMailMerge.Worker <inspect-xlsx|import|accounts|create-drafts>");
+            Console.Error.WriteLine("用法：LocalMailMerge.Worker <capabilities|inspect-xlsx|import|accounts|create-drafts>");
             return 2;
         }
 
@@ -28,6 +28,7 @@ internal static class Program
             using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(input) ? "{}" : input);
             object output = args[0] switch
             {
+                "capabilities" => Capabilities(),
                 "inspect-xlsx" => await InspectXlsxAsync(document.RootElement).ConfigureAwait(false),
                 "import" => await ImportAsync(document.RootElement).ConfigureAwait(false),
                 "accounts" => await ListAccountsAsync().ConfigureAwait(false),
@@ -44,6 +45,13 @@ internal static class Program
         }
     }
 
+    private static object Capabilities() => new
+    {
+        protocolVersion = 1,
+        validationPolicyVersion = 1,
+        supportsValidationIssues = true
+    };
+
     private static async Task<object> InspectXlsxAsync(JsonElement input)
     {
         var path = RequiredString(input, "path");
@@ -53,7 +61,7 @@ internal static class Program
     private static async Task<object> ImportAsync(JsonElement input)
     {
         var path = RequiredString(input, "path");
-        var batch = await LoadAndValidateAsync(path, ReadXlsxOptions(input)).ConfigureAwait(false);
+        var batch = await LoadAndValidateAsync(path, ReadXlsxOptions(input), ReadValidationPolicy(input)).ConfigureAwait(false);
         return ToViewModel(batch);
     }
 
@@ -89,7 +97,7 @@ internal static class Program
             RequiredString(accountElement, "smtpAddress", allowEmpty: true),
             RequiredString(accountElement, "storeId"));
 
-        var batch = await LoadAndValidateAsync(packagePath, ReadXlsxOptions(input)).ConfigureAwait(false);
+        var batch = await LoadAndValidateAsync(packagePath, ReadXlsxOptions(input), ReadValidationPolicy(input)).ConfigureAwait(false);
         var selected = batch.Messages.Where(message => selectedIds.Contains(message.PersonId)).ToList();
         var missing = selectedIds.Except(selected.Select(message => message.PersonId), StringComparer.OrdinalIgnoreCase).ToList();
         if (missing.Count > 0) throw new InvalidDataException("部分所选人员已不在交接包中，请重新导入后选择。 ");
@@ -109,18 +117,46 @@ internal static class Program
             summary = new
             {
                 success = results.Count(result => result.Outcome == "Success"),
+                skipped = results.Count(result => result.Outcome == "Skipped"),
                 failed = results.Count(result => result.Outcome == "Failed")
             },
             results
         };
     }
 
-    private static async Task<OutreachBatch> LoadAndValidateAsync(string path, XlsxImportOptions? xlsxOptions)
+    private static async Task<OutreachBatch> LoadAndValidateAsync(
+        string path,
+        XlsxImportOptions? xlsxOptions,
+        ValidationPolicy validationPolicy)
     {
         var batch = await new PackageImporter().ImportAsync(path, xlsxOptions).ConfigureAwait(false);
         var auditStore = new AuditStore();
-        new ValidationService().Validate(batch, auditStore.LoadSuccessfulKeys());
+        new ValidationService().Validate(batch, auditStore.LoadSuccessfulKeys(), validationPolicy);
         return batch;
+    }
+
+    private static ValidationPolicy ReadValidationPolicy(JsonElement input)
+    {
+        if (!input.TryGetProperty("validationPolicy", out var policyElement) || policyElement.ValueKind != JsonValueKind.Object)
+        {
+            return ValidationPolicy.Default;
+        }
+
+        var rules = new Dictionary<string, ValidationRuleLevel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var property in policyElement.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.String) continue;
+            var level = property.Value.GetString()?.ToLowerInvariant() switch
+            {
+                "blocking" => ValidationRuleLevel.Blocking,
+                "warning" => ValidationRuleLevel.Warning,
+                "pass" => ValidationRuleLevel.Pass,
+                _ => (ValidationRuleLevel?)null
+            };
+            if (level is not null) rules[property.Name] = level.Value;
+        }
+
+        return new ValidationPolicy(rules);
     }
 
     private static XlsxImportOptions? ReadXlsxOptions(JsonElement input)
@@ -206,14 +242,14 @@ internal static class Program
     private static string ValidationText(OutreachMessage message)
     {
         if (message.Validation.Issues.Any(issue => issue.Code == "invalid_email")) return "邮箱无效";
-        if (message.Validation.Issues.Any(issue => issue.Code == "do_not_contact")) return "禁止联系";
-        if (message.Validation.Issues.Any(issue => issue.Code == "content_hash_mismatch")) return "内容已变更";
         if (message.Validation.Issues.Any(issue => issue.Code == "duplicate_person")) return "人员标识重复";
-        if (message.Validation.Issues.Any(issue => issue.Code == "unresolved_placeholder")) return "占位符待处理";
+        if (message.Validation.Issues.Any(issue => issue.Code == "already_created")) return "重复创建";
+        if (message.Validation.Issues.Any(issue => issue.Code == "content_hash_mismatch")) return "内容已变更";
+        if (message.Validation.Issues.Any(issue => issue.Code == "unresolved_placeholder")) return "占位符残留";
         if (message.Validation.Issues.Any(issue => issue.Code is "missing_subject" or "missing_body")) return "内容待补充";
         if (message.Validation.Issues.Any(issue => issue.Code == "review_not_approved")) return "待人工确认";
-        if (message.Validation.Issues.Any(issue => issue.Code == "duplicate_email")) return "邮箱重复警告";
-        if (message.Validation.Issues.Any(issue => issue.Code is "missing_personalization_source" or "missing_source_url" or "missing_content_hash")) return "资料待补充";
+        if (message.Validation.Issues.Any(issue => issue.Code == "duplicate_email")) return "邮箱重复";
+        if (message.Validation.Issues.Any(issue => issue.Code == "missing_personalization_source")) return "缺少个性化事实";
         return message.Validation.State switch
         {
             ValidationState.Eligible => "通过",

@@ -6,7 +6,7 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("JSON 交接包保留任意字段", TestJsonImportAsync),
     ("校验门禁区分可创建和拦截记录", TestValidationAsync),
-    ("内容哈希不一致继续硬拦截", TestHashMismatchAsync),
+    ("内容变化规则可以调整处理等级", TestHashMismatchAsync),
     ("历史成功记录触发重复保护", TestAuditDeduplicationAsync),
     ("纯文本正文转换为 Outlook 兼容段落", TestPlainTextBodyFormattingAsync),
     ("CSV 导入保留动态字段", TestCsvImportAsync),
@@ -48,18 +48,17 @@ static async Task TestValidationAsync()
     var sample = Path.Combine(AppContext.BaseDirectory, "samples", "outreach_package.sample.json");
     var batch = await importer.ImportAsync(sample);
     new ValidationService().Validate(batch, new HashSet<string>());
-    Equal(7, batch.Messages.Count(message => message.Validation.State == ValidationState.Eligible), "eligible count");
-    Equal(3, batch.Messages.Count(message => message.Validation.State == ValidationState.NeedsReview), "warning count");
-    Equal(2, batch.Messages.Count(message => message.Validation.State == ValidationState.Blocked), "blocked count");
+    Equal(10, batch.Messages.Count(message => message.Validation.State == ValidationState.Eligible), "eligible count");
+    Equal(1, batch.Messages.Count(message => message.Validation.State == ValidationState.NeedsReview), "warning count");
+    Equal(1, batch.Messages.Count(message => message.Validation.State == ValidationState.Blocked), "blocked count");
     True(batch.Messages.All(message => message.DeclaredContentHash.Equals(message.ComputedContentHash, StringComparison.OrdinalIgnoreCase)), "sample hash mismatch");
     var placeholder = batch.Messages.Single(message => message.PersonId == "demo_laura_garcia");
     Equal(ValidationState.NeedsReview, placeholder.Validation.State, "placeholder warning state");
     True(placeholder.Validation.CanCreate, "placeholder warning should allow draft creation");
     True(placeholder.Validation.Issues.Any(issue => issue.Code == "unresolved_placeholder" && issue.Severity == ValidationIssueSeverity.Warning), "placeholder warning missing");
     var doNotContact = batch.Messages.Single(message => message.PersonId == "demo_jessica_taylor");
-    Equal(ValidationState.Blocked, doNotContact.Validation.State, "do_not_contact state");
-    True(!doNotContact.Validation.CanCreate, "do_not_contact should block draft creation");
-    True(doNotContact.Validation.Issues.Any(issue => issue.Code == "do_not_contact" && issue.Severity == ValidationIssueSeverity.Blocking), "do_not_contact blocker missing");
+    Equal(ValidationState.Eligible, doNotContact.Validation.State, "do_not_contact is no longer a rule");
+    True(doNotContact.Validation.Issues.All(issue => issue.Code != "do_not_contact"), "removed do_not_contact rule remains");
 }
 
 static async Task TestHashMismatchAsync()
@@ -72,8 +71,14 @@ static async Task TestHashMismatchAsync()
         "Changed subject after approval",
         StringComparison.Ordinal), Encoding.UTF8);
     var batch = await new PackageImporter().ImportAsync(path);
-    new ValidationService().Validate(batch, new HashSet<string>());
     var changed = batch.Messages.Single(message => message.PersonId == "demo_james_anderson");
+    new ValidationService().Validate(batch, new HashSet<string>());
+    Equal(ValidationState.Eligible, changed.Validation.State, "hash mismatch default pass state");
+    var blockingPolicy = new ValidationPolicy(new Dictionary<string, ValidationRuleLevel>
+    {
+        ["content_hash_mismatch"] = ValidationRuleLevel.Blocking
+    });
+    new ValidationService().Validate(batch, new HashSet<string>(), blockingPolicy);
     Equal(ValidationState.Blocked, changed.Validation.State, "hash mismatch state");
     True(!changed.Validation.CanCreate, "hash mismatch should block draft creation");
     True(changed.Validation.Issues.Any(issue => issue.Code == "content_hash_mismatch" && issue.Severity == ValidationIssueSeverity.Blocking), "hash mismatch blocker missing");
@@ -93,6 +98,12 @@ static async Task TestAuditDeduplicationAsync()
     await store.AppendAsync(new AuditEntry(batch.BatchId, message.PersonId, message.ComputedContentHash, "demo-entry-id", DateTimeOffset.Now, "Success", string.Empty, string.Empty));
     new ValidationService().Validate(batch, store.LoadSuccessfulKeys());
     Equal(ValidationState.Duplicate, message.Validation.State, "duplicate state");
+    var passPolicy = new ValidationPolicy(new Dictionary<string, ValidationRuleLevel>
+    {
+        ["already_created"] = ValidationRuleLevel.Pass
+    });
+    new ValidationService().Validate(batch, store.LoadSuccessfulKeys(), passPolicy);
+    Equal(ValidationState.Eligible, message.Validation.State, "duplicate pass state");
     Directory.Delete(testDirectory, recursive: true);
 }
 
@@ -141,7 +152,8 @@ static async Task TestXlsxImportAsync()
     Equal(ValidationState.NeedsReview, batch.Messages[0].Validation.State, "generic XLSX validation state");
     True(batch.Messages[0].Validation.CanCreate, "generic XLSX warning should allow draft creation");
     True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "missing_subject"), "generic XLSX missing-subject reason");
-    True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "review_not_approved"), "generic XLSX approval reason");
+    True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "missing_body"), "generic XLSX missing-body reason");
+    True(batch.Messages[0].Validation.Issues.All(issue => issue.Code is not "review_not_approved" and not "missing_content_hash" and not "missing_personalization_source"), "default-pass rules should not warn");
     File.Delete(path);
 }
 

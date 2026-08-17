@@ -6,6 +6,7 @@ import {
   Mail,
   Plus,
   RefreshCw,
+  RotateCcw,
   ShieldCheck,
   Signature,
   Trash2,
@@ -38,7 +39,14 @@ import {
   SidebarProvider
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
-import type { OutlookAccount, TemplateState } from './types';
+import type {
+  OutlookAccount,
+  TemplateState,
+  ValidationPolicyState,
+  ValidationRuleId,
+  ValidationRuleLevel
+} from './types';
+import { ValidationRulesEditor } from './ValidationRulesEditor';
 
 export type SettingsTab = 'signatures' | 'outlook' | 'safety';
 
@@ -55,6 +63,9 @@ export function SettingsDialog({
   onDeleteTemplate,
   onOpenTemplateFolder,
   onRefreshAccounts,
+  validationPolicy,
+  onMoveValidationRule,
+  onResetValidationPolicy,
   onClose
 }: {
   templateState: TemplateState;
@@ -67,6 +78,9 @@ export function SettingsDialog({
   onDeleteTemplate: (id: string) => Promise<void>;
   onOpenTemplateFolder: () => Promise<void>;
   onRefreshAccounts: () => Promise<void>;
+  validationPolicy: ValidationPolicyState;
+  onMoveValidationRule: (ruleId: ValidationRuleId, level: ValidationRuleLevel) => Promise<void>;
+  onResetValidationPolicy: () => Promise<void>;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
@@ -189,22 +203,22 @@ export function SettingsDialog({
             </section>
 
             <section className={cn('settings-section', tab !== 'safety' && 'hidden')}>
-              <div className="settings-section-heading"><div><h3>导入与安全</h3><p>问题被分为“硬拦截”和“警告”，保留用户的人工判断空间。</p></div></div>
+              <div className="settings-section-heading">
+                <div><h3>导入与安全</h3><p>拖动规则即可调整处理方式，修改后会立即用于导入和创建前校验。</p></div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  data-testid="reset-validation-rules"
+                  onClick={() => void run(onResetValidationPolicy)}
+                >
+                  <RotateCcw data-icon="inline-start" />
+                  恢复默认
+                </Button>
+              </div>
               <Separator />
-              <div className="safety-grid">
-                <Alert variant="destructive" className="safety-card">
-                  <ShieldCheck /><AlertTitle>硬拦截 · 不能创建</AlertTitle>
-                  <AlertDescription>邮箱无效或 Unknown、明确禁止联系、相同内容已成功创建，或 person_id 重复导致无法确定对象。</AlertDescription>
-                </Alert>
-                <Alert className="safety-card safety-card--warning">
-                  <TriangleAlert /><AlertTitle>警告 · 仍可选择</AlertTitle>
-                  <AlertDescription>未批准、主题或正文为空、占位符未替换、来源或内容哈希缺失，以及同一邮箱在批次内重复。</AlertDescription>
-                </Alert>
-              </div>
-              <div className="safety-rules">
-                <div className="safety-rule"><ShieldCheck /><span><strong>只保存 Outlook 草稿</strong><small>程序没有自动发送路径，最终发送由用户在 Outlook 中完成。</small></span><Badge variant="secondary">固定开启</Badge></div>
-                <div className="safety-rule"><ShieldCheck /><span><strong>创建前重新校验</strong><small>重新读取交接包，防止导入后出现未提示的硬拦截。</small></span><Badge variant="secondary">固定开启</Badge></div>
-              </div>
+              <ValidationRulesEditor policy={validationPolicy} onMoveRule={onMoveValidationRule} />
             </section>
           </SidebarInset>
         </SidebarProvider>

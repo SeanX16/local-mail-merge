@@ -39,15 +39,19 @@ const people = [
 function makeRecord(person: (typeof people)[number], index: number): MailRecord {
   const [name, email, role, organization, country, reviewStatus, kind] = person;
   const emailInvalid = name === 'Jessica Taylor' || name === 'Amanda White' || name === 'Tyler Adams';
+  const recipientEmail = emailInvalid ? 'Unknown' : email;
   const canCreate = kind === 'eligible' || kind === 'review';
   const validationText = emailInvalid ? '邮箱无效' : kind === 'eligible' ? '通过' : kind === 'review' ? '待人工确认' : '已拦截';
   const validationIssues = kind === 'eligible'
     ? []
     : emailInvalid
-      ? [{ code: 'invalid_email', message: '邮箱缺失、无效或仍为 Unknown。', severity: 'blocking' as const }]
+      ? [
+          { code: 'invalid_email', message: '邮箱为空、格式错误或仍为 Unknown。', severity: 'blocking' as const },
+          { code: 'missing_subject', message: '邮件没有填写主题。', severity: 'warning' as const }
+        ]
       : [{ code: 'review_not_approved', message: '审核状态不是 Approved，请在发送前人工确认。', severity: 'warning' as const }];
   const firstName = name.split(' ')[0];
-  const subject = index === 0 ? 'Offer of Employment - Software Engineer' : `Research opportunity related to ${role}`;
+  const subject = emailInvalid ? '' : index === 0 ? 'Offer of Employment - Software Engineer' : `Research opportunity related to ${role}`;
   const bodyText = index === 0
     ? `Dear James Anderson,\n\nWe are pleased to extend an offer of employment for the position of Software Engineer at our company. We believe your skills and experience will be a great addition to our team.\n\nPlease review the attached offer letter for details regarding your compensation, benefits, and start date.\n\nKindly confirm your acceptance by replying to this email at your earliest convenience. If you have any questions, feel free to reach out to us.\n\nWe look forward to welcoming you aboard.`
     : `Dear ${firstName},\n\nYour public work is closely related to our current research direction. We would be glad to introduce our team and learn more about your interests.\n\nWould you be open to a short conversation?`;
@@ -56,7 +60,7 @@ function makeRecord(person: (typeof people)[number], index: number): MailRecord 
     batchId: 'demo_batch_001',
     personId: `demo_${name.toLowerCase().replaceAll(' ', '_')}`,
     recipientName: name,
-    recipientEmail: email,
+    recipientEmail,
     subject,
     bodyHtml: '',
     bodyText,
@@ -69,7 +73,7 @@ function makeRecord(person: (typeof people)[number], index: number): MailRecord 
     initiallySelected: kind === 'eligible' && index < 14,
     values: {
       recipient_name: name,
-      recipient_email: email,
+      recipient_email: recipientEmail,
       target_role: role,
       organization,
       country,

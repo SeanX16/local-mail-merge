@@ -16,13 +16,30 @@ const badgeVariants = cva(
           "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
         outline:
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
+        glass:
+          "border-foreground/10 bg-linear-to-b from-background/85 to-background/42 backdrop-blur-md backdrop-saturate-150 ring-1 ring-inset ring-background/85",
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
       },
+      tone: {
+        neutral: "",
+        danger:
+          "border-destructive/15 from-destructive/10 to-destructive/5",
+        warning:
+          "border-warning/15 from-warning/10 to-warning/5",
+        success:
+          "border-success/15 from-success/10 to-success/5",
+      },
+      size: {
+        default: "",
+        counter: "size-5 rounded-md px-0 py-0 font-semibold tabular-nums",
+      },
     },
     defaultVariants: {
       variant: "default",
+      tone: "neutral",
+      size: "default",
     },
   }
 )
@@ -30,6 +47,8 @@ const badgeVariants = cva(
 function Badge({
   className,
   variant = "default",
+  tone = "neutral",
+  size = "default",
   asChild = false,
   ...props
 }: React.ComponentProps<"span"> &
@@ -40,7 +59,9 @@ function Badge({
     <Comp
       data-slot="badge"
       data-variant={variant}
-      className={cn(badgeVariants({ variant }), className)}
+      data-tone={tone}
+      data-size={size}
+      className={cn(badgeVariants({ variant, tone, size }), className)}
       {...props}
     />
   )

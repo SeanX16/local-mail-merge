@@ -1,0 +1,25 @@
+{
+  "checks": {
+    "threeZonesVisible": true,
+    "invalidEmailLocked": true,
+    "duplicateStartsBlocked": true,
+    "warningDefaultsVisible": true,
+    "passDefaultsVisible": true,
+    "renamedRulesVisible": true,
+    "tagsUseNovaButtons": true,
+    "fixedRuleUsesLock": true,
+    "movableRulesUseGrip": true,
+    "noExtraMoveMenus": true,
+    "resetActionVisible": true,
+    "headersHaveNoDivider": true,
+    "countsUseTintedGlass": true,
+    "passZoneHasGreenTheme": true,
+    "tooltipExplainsRule": true,
+    "dragMoveWorks": true,
+    "policyPersisted": true,
+    "resetRestoresDefaults": true,
+    "resetPersisted": true
+  },
+  "passed": true,
+  "consoleErrors": []
+}

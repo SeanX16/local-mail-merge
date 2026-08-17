@@ -10,8 +10,10 @@ import {
   resolveTemplatePath,
   selectTemplate
 } from './templateCatalog';
+import { getValidationPolicy, saveValidationPolicy } from './validationPolicy';
 
-type WorkerCommand = 'inspect-xlsx' | 'import' | 'accounts' | 'create-drafts';
+type WorkerCommand = 'capabilities' | 'inspect-xlsx' | 'import' | 'accounts' | 'create-drafts';
+const WORKER_PROTOCOL_VERSION = 1;
 
 let mainWindow: BrowserWindow | null = null;
 const isDemo = process.argv.includes('--demo');
@@ -58,15 +60,24 @@ function requireRecord(value: unknown, message: string): Record<string, unknown>
   return value as Record<string, unknown>;
 }
 
+function resolveLocalReportPath(value: unknown): string {
+  if (typeof value !== 'string' || !value || value.length > 4096) throw new Error('结果报告路径无效。');
+  const localAppData = process.env.LOCALAPPDATA ?? path.join(path.dirname(app.getPath('appData')), 'Local');
+  const reportRoot = path.resolve(localAppData, 'HKRC', 'LocalMailMerge', 'reports');
+  const reportPath = path.resolve(value);
+  const relative = path.relative(reportRoot, reportPath);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) || path.extname(reportPath).toLowerCase() !== '.json') {
+    throw new Error('只能定位 Local Mail Merge 生成的结果报告。');
+  }
+  if (!fs.existsSync(reportPath) || !fs.statSync(reportPath).isFile()) throw new Error('结果报告不存在或已被移动。');
+  return reportPath;
+}
+
 function workerCandidates(): string[] {
   const configured = process.env.LOCAL_MAIL_MERGE_WORKER;
-  const resources = process.resourcesPath;
-  return [
-    configured ?? '',
-    path.join(resources, 'publish', 'LocalMailMerge.Worker.exe'),
-    path.resolve(__dirname, '..', '..', 'LocalMailMerge.Worker', 'publish', 'LocalMailMerge.Worker.exe'),
-    path.resolve(__dirname, '..', '..', 'LocalMailMerge.Worker', 'bin', 'Debug', 'net10.0-windows', 'LocalMailMerge.Worker.exe')
-  ].filter(Boolean);
+  if (configured) return [configured];
+  if (app.isPackaged) return [path.join(process.resourcesPath, 'publish', 'LocalMailMerge.Worker.exe')];
+  return [path.resolve(__dirname, '..', '..', 'LocalMailMerge.Worker', 'bin', 'Debug', 'net10.0-windows', 'LocalMailMerge.Worker.exe')];
 }
 
 function resolveWorker(): string {
@@ -75,7 +86,7 @@ function resolveWorker(): string {
   return candidate;
 }
 
-function runWorker(command: WorkerCommand, payload: unknown): Promise<unknown> {
+function runWorkerProcess(command: WorkerCommand, payload: unknown): Promise<unknown> {
   const worker = resolveWorker();
   return new Promise((resolve, reject) => {
     const child = spawn(worker, [command], {
@@ -102,6 +113,31 @@ function runWorker(command: WorkerCommand, payload: unknown): Promise<unknown> {
     });
     child.stdin.end(`${JSON.stringify(payload)}\n`, 'utf8');
   });
+}
+
+let workerCompatibilityCheck: Promise<void> | null = null;
+
+function ensureWorkerCompatibility(): Promise<void> {
+  if (!workerCompatibilityCheck) {
+    workerCompatibilityCheck = runWorkerProcess('capabilities', {})
+      .then((value) => {
+        const capabilities = requireRecord(value, '本地助手没有返回兼容性信息。');
+        if (capabilities.protocolVersion !== WORKER_PROTOCOL_VERSION || capabilities.validationPolicyVersion !== 1) {
+          throw new Error('本地助手版本与当前界面不兼容。');
+        }
+      })
+      .catch((error) => {
+        workerCompatibilityCheck = null;
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`本地助手版本检查失败：${reason} 请重新启动开发版或重新打包应用。`);
+      });
+  }
+  return workerCompatibilityCheck;
+}
+
+async function runWorker(command: Exclude<WorkerCommand, 'capabilities'>, payload: unknown): Promise<unknown> {
+  await ensureWorkerCompatibility();
+  return runWorkerProcess(command, payload);
 }
 
 function createWindow(): void {
@@ -141,12 +177,13 @@ function createWindow(): void {
   mainWindow.on('unmaximize', publishMaximizedState);
 
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
-  const settingsCapture = ['settings', 'templates', 'signatures', 'outlook', 'safety'].includes(captureState);
+  const settingsCapture = ['settings', 'templates', 'signatures', 'outlook', 'safety', 'validation-rules'].includes(captureState);
   const importCapture = captureState === 'import';
   const realImportCapture = captureState === 'real-import';
   const warningCapture = captureState === 'warning';
   const warningPreviewCapture = captureState === 'warning-preview';
   const validationCapture = captureState === 'validation';
+  const validationCardsCapture = captureState === 'validation-cards';
   const longPathCapture = captureState === 'long-path';
   const accountMenuCapture = captureState === 'account-menu';
   const signatureMenuCapture = captureState === 'signature-menu';
@@ -155,7 +192,12 @@ function createWindow(): void {
   const statusMenuCapture = captureState === 'status-menu';
   const selectedRowCapture = captureState === 'selected-row';
   const shortColumnsCapture = captureState === 'short-columns';
-  const settingsCaptureValue = captureState === 'outlook' || captureState === 'safety' ? captureState : 'signatures';
+  const creationResultCapture = captureState === 'creation-result';
+  const settingsCaptureValue = captureState === 'outlook'
+    ? 'outlook'
+    : captureState === 'safety' || captureState === 'validation-rules'
+    ? 'safety'
+    : 'signatures';
   const captureQuery = accountMenuCapture
     ? 'accountMenuState=1'
     : signatureMenuCapture
@@ -170,6 +212,8 @@ function createWindow(): void {
     ? 'selectedRowState=1'
     : shortColumnsCapture
     ? 'shortColumnsState=1'
+    : creationResultCapture
+    ? 'creationResultState=1'
     : warningCapture
     ? 'warningState=1'
     : warningPreviewCapture
@@ -184,7 +228,7 @@ function createWindow(): void {
     ? `settingsState=${settingsCaptureValue}`
     : captureState === 'reference' ? 'referenceState=1' : '';
   if (rendererUrl) {
-    const url = capturePath || importCapture || realImportCapture || warningCapture || accountMenuCapture || signatureMenuCapture || fieldMenuCapture || filterPartialCapture || statusMenuCapture || selectedRowCapture || shortColumnsCapture || settingsCapture
+    const url = capturePath || importCapture || realImportCapture || warningCapture || accountMenuCapture || signatureMenuCapture || fieldMenuCapture || filterPartialCapture || statusMenuCapture || selectedRowCapture || shortColumnsCapture || creationResultCapture || settingsCapture
       ? `${rendererUrl}/${captureQuery ? `?${captureQuery}` : ''}`
       : rendererUrl;
     void mainWindow.loadURL(url);
@@ -213,10 +257,12 @@ function createWindow(): void {
       ? { selectedRowState: '1' }
       : shortColumnsCapture
       ? { shortColumnsState: '1' }
+      : creationResultCapture
+      ? { creationResultState: '1' }
       : settingsCapture
       ? { settingsState: settingsCaptureValue }
       : captureState === 'reference' ? { referenceState: '1' } : {};
-    const options = capturePath || importCapture || realImportCapture || warningCapture || accountMenuCapture || signatureMenuCapture || fieldMenuCapture || filterPartialCapture || statusMenuCapture || selectedRowCapture || shortColumnsCapture || settingsCapture ? { query } : undefined;
+    const options = capturePath || importCapture || realImportCapture || warningCapture || accountMenuCapture || signatureMenuCapture || fieldMenuCapture || filterPartialCapture || statusMenuCapture || selectedRowCapture || shortColumnsCapture || creationResultCapture || settingsCapture ? { query } : undefined;
     void mainWindow.loadFile(path.join(__dirname, '..', 'dist-renderer', 'index.html'), options);
   }
 
@@ -232,16 +278,19 @@ function createWindow(): void {
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
       if (settingsCapture) {
+        mainWindow!.show();
         const settingsOpened = await mainWindow!.webContents.executeJavaScript(`
           (async () => {
             const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            await wait(220);
+            if (document.querySelector('.settings-dialog')) return true;
+            const settingsButton = document.querySelector('button[aria-label="设置"]');
+            if (settingsButton) {
+              settingsButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
+              settingsButton.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+            }
             const deadline = performance.now() + 2000;
             while (!document.querySelector('.settings-dialog') && performance.now() < deadline) {
-              const settingsButton = document.querySelector('button[aria-label="设置"]');
-              if (settingsButton) {
-                settingsButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
-                settingsButton.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
-              }
               await wait(50);
             }
             return Boolean(document.querySelector('.settings-dialog'));
@@ -249,6 +298,20 @@ function createWindow(): void {
         `) as boolean;
         if (!settingsOpened) throw new Error('设置页验收截图未能打开设置弹窗。');
         await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      if (creationResultCapture) {
+        const resultDialogOpened = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const deadline = performance.now() + 2000;
+            while (!document.querySelector('.creation-result-dialog') && performance.now() < deadline) {
+              await wait(50);
+            }
+            return Boolean(document.querySelector('.creation-result-dialog'));
+          })()
+        `) as boolean;
+        if (!resultDialogOpened) throw new Error('草稿创建结果弹窗验收截图未能打开。');
+        await new Promise((resolve) => setTimeout(resolve, 150));
       }
       if (statusMenuCapture) {
         await mainWindow!.webContents.executeJavaScript(`
@@ -271,6 +334,12 @@ function createWindow(): void {
           })()
         `);
         await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      if (validationCardsCapture) {
+        await mainWindow!.webContents.executeJavaScript(`
+          (() => document.querySelector('tbody tr.is-blocked')?.dispatchEvent(new MouseEvent('click', { bubbles: true })))()
+        `);
+        await new Promise((resolve) => setTimeout(resolve, 120));
       }
       if (longPathCapture || warningPreviewCapture) {
         await mainWindow!.webContents.executeJavaScript(`
@@ -309,6 +378,199 @@ function createWindow(): void {
   } else if (smokePath) {
     mainWindow.webContents.once('did-finish-load', async () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
+      if (captureState === 'validation-rules') {
+        const initial = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const settingsDeadline = performance.now() + 2000;
+            while (!document.querySelector('[data-rule-zone="blocking"]') && performance.now() < settingsDeadline) await wait(40);
+            const checks = {
+              threeZonesVisible: document.querySelectorAll('.validation-rule-zone').length === 3,
+              invalidEmailLocked: document.querySelector('[data-rule-id="invalid_email"]')?.getAttribute('data-rule-fixed') === 'true',
+              duplicateStartsBlocked: Boolean(document.querySelector('[data-rule-zone="blocking"] [data-rule-id="already_created"]')),
+              warningDefaultsVisible: ['missing_subject', 'missing_body', 'unresolved_placeholder', 'duplicate_email'].every((id) => document.querySelector('[data-rule-zone="warning"] [data-rule-id="' + id + '"]')),
+              passDefaultsVisible: ['review_not_approved', 'missing_personalization_source', 'content_hash_mismatch'].every((id) => document.querySelector('[data-rule-zone="pass"] [data-rule-id="' + id + '"]')),
+              passZoneUsesCreatableLabel: document.querySelector('[data-rule-zone="pass"] [data-slot="card-title"]')?.textContent?.includes('可创建') === true,
+              renamedRulesVisible: ['邮箱无效', '重复创建', '占位符残留', '邮箱重复'].every((label) => document.querySelector('.settings-dialog')?.textContent?.includes(label)),
+              tagsUseNovaButtons: [...document.querySelectorAll('.validation-rule-tag')].every((item) => ['BUTTON', 'SPAN'].includes(item.tagName) && item.getAttribute('data-size') === 'sm' && item.getAttribute('data-variant') === 'glass'),
+              fixedRuleUsesLock: Boolean(document.querySelector('[data-rule-id="invalid_email"] [data-icon="inline-start"]')),
+              movableRulesUseGrip: Boolean(document.querySelector('[data-rule-id="missing_subject"] button [data-icon="inline-start"]')),
+              noExtraMoveMenus: !document.querySelector('button[aria-label^="移动"]'),
+              resetActionVisible: Boolean(document.querySelector('[data-testid="reset-validation-rules"]')),
+              headersHaveNoDivider: [...document.querySelectorAll('[data-rule-zone] [data-slot="card-header"]')]
+                .every((item) => Number.parseFloat(getComputedStyle(item).borderBottomWidth) === 0),
+              countsUseTintedGlass: document.querySelectorAll('.validation-rule-count').length === 3 &&
+                ['danger', 'warning', 'success'].every((tone) =>
+                  document.querySelector('.validation-rule-count[data-variant="glass"][data-tone="' + tone + '"][data-size="counter"]')
+                ) && [...document.querySelectorAll('.validation-rule-count')]
+                  .every((item) => getComputedStyle(item).color === getComputedStyle(document.body).color && getComputedStyle(item).backgroundImage !== 'none'),
+              coolSuccessPaletteApplied: getComputedStyle(document.documentElement)
+                .getPropertyValue('--success-soft').includes('180'),
+              passZoneHasGreenTheme: Boolean(document.querySelector('.validation-rule-zone--pass')) &&
+                getComputedStyle(document.querySelector('.validation-rule-zone--pass')).backgroundColor !== getComputedStyle(document.querySelector('.validation-rule-zone--blocking')).backgroundColor
+            };
+            const dragButton = document.querySelector('button[aria-label="拖动“主题为空”"]');
+            dragButton?.focus();
+            await wait(360);
+            checks.tooltipExplainsRule = [...document.querySelectorAll('[data-slot="tooltip-content"]')]
+              .some((item) => item.textContent?.includes('邮件没有填写主题。'));
+            dragButton?.blur();
+            const targetZone = document.querySelector('[data-rule-zone="blocking"]');
+            const dragRect = dragButton?.getBoundingClientRect();
+            const targetRect = targetZone?.getBoundingClientRect();
+            const coordinates = dragRect && targetRect ? {
+              startX: Math.round(dragRect.left + dragRect.width / 2),
+              startY: Math.round(dragRect.top + dragRect.height / 2),
+              endX: Math.round(targetRect.left + targetRect.width / 2),
+              endY: Math.round(targetRect.bottom - 28)
+            } : null;
+            return { checks, coordinates };
+          })()
+        `) as { checks: Record<string, boolean>; coordinates: { startX: number; startY: number; endX: number; endY: number } | null };
+
+        if (initial.coordinates) {
+          const { startX, startY, endX, endY } = initial.coordinates;
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseMove', x: startX, y: startY });
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseDown', x: startX, y: startY, button: 'left', clickCount: 1 });
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseMove', x: startX + 12, y: startY + 12, movementX: 12, movementY: 12 });
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round((startX + endX) / 2), y: Math.round((startY + endY) / 2), movementX: Math.round((endX - startX) / 2), movementY: Math.round((endY - startY) / 2) });
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseMove', x: endX, y: endY, movementX: endX - startX - 12, movementY: endY - startY - 12 });
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseUp', x: endX, y: endY, button: 'left', clickCount: 1 });
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+
+        const interaction = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const checks = {
+              dragMoveWorks: Boolean(document.querySelector('[data-rule-zone="blocking"] [data-rule-id="missing_subject"]')),
+              dragMoveHasNoToast: !document.querySelector('[data-sonner-toast]'),
+              policyPersisted: false,
+              resetRestoresDefaults: false,
+              resetPersisted: false
+            };
+            const saved = await window.desktopApi.getValidationPolicy();
+            checks.policyPersisted = saved.rules.already_created === 'blocking' && saved.rules.missing_subject === 'blocking' && saved.rules.invalid_email === 'blocking';
+            document.querySelector('[data-testid="reset-validation-rules"]')?.click();
+            const resetDeadline = performance.now() + 2000;
+            while (!document.querySelector('[data-rule-zone="warning"] [data-rule-id="missing_subject"]') && performance.now() < resetDeadline) await wait(40);
+            checks.resetRestoresDefaults = Boolean(
+              document.querySelector('[data-rule-zone="blocking"] [data-rule-id="already_created"]') &&
+              document.querySelector('[data-rule-zone="warning"] [data-rule-id="missing_subject"]') &&
+              document.querySelector('[data-rule-zone="pass"] [data-rule-id="review_not_approved"]')
+            );
+            const resetSaved = await window.desktopApi.getValidationPolicy();
+            checks.resetPersisted = resetSaved.rules.already_created === 'blocking' &&
+              resetSaved.rules.missing_subject === 'warning' &&
+              resetSaved.rules.review_not_approved === 'pass' &&
+              resetSaved.rules.invalid_email === 'blocking';
+            return checks;
+          })()
+        `) as Record<string, boolean>;
+        const checks = { ...initial.checks, ...interaction };
+        const result = { checks, passed: Object.values(checks).every(Boolean) };
+        const output = { ...result, consoleErrors: rendererConsoleErrors };
+        fs.mkdirSync(path.dirname(smokePath), { recursive: true });
+        fs.writeFileSync(smokePath, JSON.stringify(output, null, 2));
+        mainWindow?.destroy();
+        app.exit(result.passed && rendererConsoleErrors.length === 0 ? 0 : 1);
+        return;
+      }
+      if (captureState === 'validation-cards') {
+        const result = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            document.querySelector('tbody tr.is-blocked')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await wait(100);
+            const summaryText = [...document.querySelectorAll('.summary-metric-label')].map((item) => item.textContent?.trim());
+            const blockingCard = document.querySelector('.validation-issue-card--blocking');
+            const warningCard = document.querySelector('.validation-issue-card--warning');
+            const fontSamples = [
+              document.documentElement,
+              document.body,
+              document.querySelector('.titlebar-brand'),
+              document.querySelector('.summary-metric-label'),
+              document.querySelector('tbody td'),
+              document.querySelector('.preview-pane')
+            ].filter(Boolean);
+            const checks = {
+              appUsesNotoSansSC: fontSamples.length === 6 && fontSamples.every((item) =>
+                getComputedStyle(item).fontFamily.includes('Noto Sans SC Variable')
+              ),
+              coolSuccessPaletteApplied: getComputedStyle(document.documentElement)
+                .getPropertyValue('--success-soft').includes('180'),
+              summaryLabelsUnified: ['可创建', '警告', '拦截'].every((label) => summaryText.includes(label)),
+              issuesRenderedSeparately: document.querySelectorAll('.validation-issue-card').length === 2,
+              blockingUsesRedCard: Boolean(blockingCard),
+              warningUsesOrangeCard: Boolean(warningCard),
+              blockingTextUsesRuleCatalog: blockingCard?.querySelector('[data-slot="alert-title"]')?.textContent?.trim() === '邮箱无效' &&
+                blockingCard?.querySelector('[data-slot="alert-description"]')?.textContent?.trim() === '邮箱为空、格式错误或仍为 Unknown。',
+              warningTextUsesRuleCatalog: warningCard?.querySelector('[data-slot="alert-title"]')?.textContent?.trim() === '主题为空' &&
+                warningCard?.querySelector('[data-slot="alert-description"]')?.textContent?.trim() === '邮件没有填写主题。',
+              descriptionsUseSameNeutralColor: Boolean(blockingCard && warningCard) &&
+                getComputedStyle(blockingCard.querySelector('[data-slot="alert-description"]')).color ===
+                  getComputedStyle(warningCard.querySelector('[data-slot="alert-description"]')).color,
+              titlesKeepSeverityColors: Boolean(blockingCard && warningCard) &&
+                getComputedStyle(blockingCard.querySelector('[data-slot="alert-title"]')).color !==
+                  getComputedStyle(warningCard.querySelector('[data-slot="alert-title"]')).color &&
+                getComputedStyle(blockingCard.querySelector('[data-slot="alert-title"]')).color !==
+                  getComputedStyle(blockingCard.querySelector('[data-slot="alert-description"]')).color &&
+                getComputedStyle(warningCard.querySelector('[data-slot="alert-title"]')).color !==
+                  getComputedStyle(warningCard.querySelector('[data-slot="alert-description"]')).color,
+              compactAlertVariantApplied: blockingCard?.getAttribute('data-size') === 'sm' &&
+                getComputedStyle(blockingCard).fontSize === '12px' &&
+                getComputedStyle(blockingCard.querySelector('[data-slot="alert-title"]')).fontWeight === '500' &&
+                getComputedStyle(blockingCard.querySelector('[data-slot="alert-description"]')).fontSize === '12px' &&
+                getComputedStyle(blockingCard.querySelector('[data-slot="alert-description"]')).lineHeight === '16px',
+              compactAlertSpacingApplied: Boolean(blockingCard) &&
+                getComputedStyle(blockingCard).paddingTop === '6px' &&
+                getComputedStyle(blockingCard).paddingRight === '8px'
+            };
+            return { checks, passed: Object.values(checks).every(Boolean) };
+          })()
+        `) as { checks: Record<string, boolean>; passed: boolean };
+        const output = { ...result, consoleErrors: rendererConsoleErrors };
+        fs.mkdirSync(path.dirname(smokePath), { recursive: true });
+        fs.writeFileSync(smokePath, JSON.stringify(output, null, 2));
+        mainWindow?.destroy();
+        app.exit(result.passed && rendererConsoleErrors.length === 0 ? 0 : 1);
+        return;
+      }
+      if (captureState === 'creation-result') {
+        const result = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const deadline = performance.now() + 2000;
+            while (!document.querySelector('.creation-result-dialog') && performance.now() < deadline) {
+              await wait(50);
+            }
+            const dialog = document.querySelector('.creation-result-dialog');
+            const text = dialog?.textContent ?? '';
+            const checks = {
+              dialogOpened: Boolean(dialog),
+              partialTitleVisible: text.includes('草稿创建部分完成'),
+              actualCountsVisible: text.includes('实际保存 1 封，跳过 0 封，失败 1 封'),
+              failurePersonVisible: text.includes('Emily Brown'),
+              failureReasonVisible: text.includes('Outlook 暂时无法保存此草稿'),
+              reportPathVisible: text.includes('LocalMailMerge\\\\reports\\\\demo_batch_20260813_153000.json'),
+              revalidationVisible: text.includes('当前交接包已重新校验'),
+              showReportActionVisible: text.includes('在文件夹中显示报告')
+            };
+            return { checks, passed: Object.values(checks).every(Boolean) };
+          })()
+        `) as { checks: Record<string, boolean>; passed: boolean };
+        const output = { ...result, consoleErrors: rendererConsoleErrors };
+        fs.mkdirSync(path.dirname(smokePath), { recursive: true });
+        fs.writeFileSync(smokePath, JSON.stringify(output, null, 2));
+        mainWindow?.destroy();
+        app.exit(result.passed && rendererConsoleErrors.length === 0 ? 0 : 1);
+        return;
+      }
       if (captureState === 'performance') {
         const performanceResult = await mainWindow!.webContents.executeJavaScript(`
           (async () => {
@@ -610,7 +872,7 @@ function createWindow(): void {
           warningRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
           await wait(40);
           checks.rowDrivesPreview = (document.querySelector('.preview-metadata')?.textContent ?? '').length > 20;
-          checks.warningBannerVisible = Boolean(document.querySelector('.validation-banner--warning'));
+          checks.warningBannerVisible = Boolean(document.querySelector('.validation-issue-card--warning'));
 
           checks.pathUsesMiddleEllipsis = Boolean(document.querySelector('.path-directory') && document.querySelector('.path-filename')?.textContent?.includes('.json'));
           checks.accountUsesCustomDropdown = Boolean(document.querySelector('[data-testid="account-dropdown-trigger"]')) && !document.querySelector('#account')?.matches('select');
@@ -666,7 +928,20 @@ function createWindow(): void {
           document.querySelector('[data-settings-tab="safety"]')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
           document.querySelector('[data-settings-tab="safety"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
           await wait(30);
-          checks.safetySettingsAvailable = Boolean(document.querySelector('.safety-card'));
+          checks.safetySettingsAvailable = document.querySelectorAll('.validation-rule-zone').length === 3;
+          checks.safetyDefaultPlacement = Boolean(
+            document.querySelector('[data-rule-zone="blocking"] [data-rule-id="invalid_email"]') &&
+            document.querySelector('[data-rule-zone="blocking"] [data-rule-id="already_created"]') &&
+            document.querySelector('[data-rule-zone="warning"] [data-rule-id="missing_subject"]') &&
+            document.querySelector('[data-rule-zone="warning"] [data-rule-id="missing_body"]') &&
+            document.querySelector('[data-rule-zone="warning"] [data-rule-id="unresolved_placeholder"]') &&
+            document.querySelector('[data-rule-zone="warning"] [data-rule-id="duplicate_email"]') &&
+            document.querySelector('[data-rule-zone="pass"] [data-rule-id="review_not_approved"]') &&
+            document.querySelector('[data-rule-zone="pass"] [data-rule-id="missing_personalization_source"]') &&
+            document.querySelector('[data-rule-zone="pass"] [data-rule-id="content_hash_mismatch"]')
+          );
+          checks.invalidEmailRuleLocked = document.querySelector('[data-rule-id="invalid_email"]')?.getAttribute('data-rule-fixed') === 'true' &&
+            Boolean(document.querySelector('[data-rule-id="invalid_email"] [data-icon="inline-start"]'));
           document.querySelector('.settings-dialog [data-slot="dialog-close"]')?.click();
           await wait(30);
           checks.settingsClosed = !document.querySelector('.settings-dialog');
@@ -676,7 +951,7 @@ function createWindow(): void {
           const footerNoteRect = document.querySelector('.footer-bar p')?.getBoundingClientRect();
           checks.footerCopyVerticallyAligned = Boolean(selectionRect && footerNoteRect && Math.abs((selectionRect.top + selectionRect.height / 2) - (footerNoteRect.top + footerNoteRect.height / 2)) <= 1);
 
-          const warningBanner = document.querySelector('.validation-banner');
+          const warningBanner = document.querySelector('.validation-issue-card');
           const warningDescription = warningBanner?.querySelector('[data-slot="alert-description"]');
           const mailBody = document.querySelector('.mail-body');
           checks.warningTypographyMatchesPreview = Boolean(warningBanner && warningDescription && mailBody && Number.parseFloat(getComputedStyle(warningDescription).fontSize) <= Number.parseFloat(getComputedStyle(mailBody).fontSize));
@@ -694,7 +969,7 @@ function createWindow(): void {
           checks.blockedNotSelectable = blockedCheckbox?.getAttribute('data-disabled') !== null;
           blockedRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
           await wait(30);
-          checks.blockReasonVisible = Boolean(document.querySelector('.validation-banner--blocked li'));
+          checks.blockReasonVisible = Boolean(document.querySelector('.validation-issue-card--blocking [data-slot="alert-description"]'));
 
           document.querySelector('.create-button')?.click();
           await wait(40);
@@ -793,6 +1068,15 @@ app.whenReady().then(() => {
     if (error) throw new Error(error);
   });
 
+  ipcMain.handle('validation-policy:get', (event) => {
+    assertTrustedEvent(event);
+    return getValidationPolicy();
+  });
+  ipcMain.handle('validation-policy:save', (event, value: unknown) => {
+    assertTrustedEvent(event);
+    return saveValidationPolicy(value);
+  });
+
   ipcMain.handle('worker:inspect-xlsx', (event, filePath: string) => {
     assertTrustedEvent(event);
     if (typeof filePath !== 'string' || filePath.length > 4096) throw new Error('交接包路径无效。');
@@ -801,14 +1085,15 @@ app.whenReady().then(() => {
   ipcMain.handle('worker:import', (event, filePath: string, options?: unknown) => {
     assertTrustedEvent(event);
     if (typeof filePath !== 'string' || filePath.length > 4096) throw new Error('交接包路径无效。');
-    if (options === undefined) return runWorker('import', { path: filePath });
+    const validationPolicy = getValidationPolicy().rules;
+    if (options === undefined) return runWorker('import', { path: filePath, validationPolicy });
     const record = requireRecord(options, 'Excel 导入参数无效。');
     const worksheetName = typeof record.worksheetName === 'string' ? record.worksheetName.trim() : '';
     const headerRowNumber = typeof record.headerRowNumber === 'number' ? record.headerRowNumber : 0;
     if (!worksheetName || worksheetName.length > 128 || !Number.isInteger(headerRowNumber) || headerRowNumber < 1 || headerRowNumber > 1_048_576) {
       throw new Error('Excel Sheet 或字段行参数无效。');
     }
-    return runWorker('import', { path: filePath, worksheetName, headerRowNumber });
+    return runWorker('import', { path: filePath, worksheetName, headerRowNumber, validationPolicy });
   });
   ipcMain.handle('worker:accounts', (event) => {
     assertTrustedEvent(event);
@@ -821,7 +1106,7 @@ app.whenReady().then(() => {
     const templateId = typeof record.templateId === 'string' ? record.templateId : '';
     const templatePath = resolveTemplatePath(templateId);
     const { templateId: _templateId, ...workerPayload } = record;
-    return runWorker('create-drafts', { ...workerPayload, templatePath });
+    return runWorker('create-drafts', { ...workerPayload, templatePath, validationPolicy: getValidationPolicy().rules });
   });
   ipcMain.handle('window:minimize', (event) => {
     assertTrustedEvent(event);
@@ -848,6 +1133,10 @@ app.whenReady().then(() => {
   ipcMain.handle('shell:open-outlook', async (event) => {
     assertTrustedEvent(event);
     await shell.openExternal('outlook:');
+  });
+  ipcMain.handle('shell:show-report', (event, reportPath: string) => {
+    assertTrustedEvent(event);
+    shell.showItemInFolder(resolveLocalReportPath(reportPath));
   });
 
   createWindow();

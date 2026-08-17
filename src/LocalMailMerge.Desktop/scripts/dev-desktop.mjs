@@ -8,6 +8,21 @@ const projectRoot = path.resolve(import.meta.dirname, '..');
 const viteBin = path.resolve(path.dirname(require.resolve('vite/package.json')), 'bin', 'vite.js');
 const electronPath = require('electron');
 const rendererUrl = 'http://127.0.0.1:4173';
+const workerProject = path.resolve(projectRoot, '..', 'LocalMailMerge.Worker', 'LocalMailMerge.Worker.csproj');
+const workerExecutable = path.resolve(projectRoot, '..', 'LocalMailMerge.Worker', 'bin', 'Debug', 'net10.0-windows', 'LocalMailMerge.Worker.exe');
+
+function run(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: 'inherit', ...options });
+    child.on('error', reject);
+    child.on('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${command} exited with code ${code ?? -1}.`));
+    });
+  });
+}
+
+await run('dotnet', ['build', workerProject, '-c', 'Debug']);
 
 const vite = spawn(process.execPath, [viteBin, '--host', '127.0.0.1', '--port', '4173', '--strictPort'], {
   cwd: projectRoot,
@@ -33,7 +48,11 @@ try {
   electron = spawn(electronPath, ['.', '--demo'], {
     cwd: projectRoot,
     stdio: 'inherit',
-    env: { ...process.env, ELECTRON_RENDERER_URL: rendererUrl }
+    env: {
+      ...process.env,
+      ELECTRON_RENDERER_URL: rendererUrl,
+      LOCAL_MAIL_MERGE_WORKER: workerExecutable
+    }
   });
   electron.on('exit', (code) => {
     vite.kill();

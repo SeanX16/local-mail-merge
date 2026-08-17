@@ -1,154 +1,147 @@
-# 方案 A2 笔记本紧凑布局、分级校验与邮件签名交互设计验收
+# Local Mail Merge 当前视觉验收
 
-## 对比对象
+## 2026-08-14 导入与安全规则页 Nova 组件验收
 
-- source visual truth path: `docs/design/mockups/local-mail-merge-vA2-custom-columns-and-filters.png`
-- implementation screenshot path: `docs/design/implementation/local-mail-merge-electron-compact-1366x768-normalized.png`
-- latest implementation screenshot path: `docs/design/implementation/local-mail-merge-signature-ui-1366x768-normalized.png`
-- table interaction screenshot path: `docs/design/implementation/local-mail-merge-table-validation-resize-1366x768-normalized.png`
-- validation label screenshot path: `docs/design/implementation/local-mail-merge-validation-labels-1366x768-normalized.png`
-- dimmed settings screenshot path: `docs/design/implementation/local-mail-merge-settings-dimmed-1366x768-normalized.png`
-- custom dropdown screenshots:
-  - `docs/design/implementation/local-mail-merge-account-menu-1366x768-normalized.png`
-  - `docs/design/implementation/local-mail-merge-signature-menu-1366x768-normalized.png`
-- signature settings screenshot: `docs/design/implementation/local-mail-merge-signature-settings-1366x768-normalized.png`
-- warning confirmation screenshot: `docs/design/implementation/local-mail-merge-electron-warning-confirm-1366x768-normalized.png`
-- tiered safety screenshot: `docs/design/implementation/local-mail-merge-electron-safety-1366x768-normalized.png`
-- settings screenshots:
-  - `docs/design/implementation/local-mail-merge-electron-settings-normalized.png`
-  - `docs/design/implementation/local-mail-merge-electron-settings-outlook-normalized.png`
-  - `docs/design/implementation/local-mail-merge-electron-settings-safety-normalized.png`
-- Excel import dialog screenshot: `docs/design/implementation/local-mail-merge-electron-import-dialog-normalized.png`
-- viewport: Electron `BrowserWindow` 1366 × 768 CSS px，Windows 笔记本屏幕状态
-- source dimensions: 1581 × 995 px，1×
-- implementation dimensions: 原始捕获 2732 × 1536 px，约 2× 系统密度；使用高质量双三次缩放归一化为 1366 × 768 px 后验收
-- latest implementation dimensions: 原始捕获 2634 × 1483 px，当前系统接近 2× 密度；使用高质量双三次缩放归一化为 1366 × 768 px 后验收
-- Excel import dialog dimensions: 原始捕获 2880 × 1705 px；窗口受当前 Windows 工作区限制，使用高质量双三次缩放归一化到与设计稿相同的 1581 × 995 px 画布后比较，未把密度/工作区差异作为视觉缺陷
-- state: 演示数据；字段管理和“目标岗位”筛选同时展开；另行验收了账户下拉、邮件签名下拉、“添加新签名”入口及邮件签名设置页。
-- Excel import state: 选择多 Sheet XLSX 后，推荐 `Talent List` 与第 1 行字段名；弹窗显示 10 个字段和前 5 条记录预览
+### Comparison target
+
+- Source visual truth：`C:/Users/Sean/AppData/Local/Temp/codex-clipboard-0697ec89-7e95-425d-9ae6-9f402d5f7d68.png`，3183 × 1800 px。该图是 Nova + Inter 的组件语言参考，不是相同业务页面，因此只比较字体、圆角、白色表面、边界、控件密度和留白节奏，不做虚假的逐像素版式判断。
+- Implementation：`docs/design/implementation/local-mail-merge-validation-rules-nova-final.png`，2634 × 1483 px；Electron 视口 1366 × 768 CSS px，设备密度约 1.93。
+- Minimum viewport：`docs/design/implementation/local-mail-merge-validation-rules-nova-1000x620.png`，1929 × 1198 px；Electron 视口 1000 × 620 CSS px，设备密度约 1.93。
+- State：演示数据，设置弹窗打开并选中“导入与安全”；规则处于默认分区，拦截 2 条、警告 4 条、默认放行 3 条。
+- Full-view comparison：`docs/design/implementation/qa-nova-reference-left-validation-rules-right.png`。源图和实现图分别归一到 1366 × 768 后左右并排。
+- Focused comparison：`docs/design/implementation/qa-nova-controls-left-rule-cards-right.png`。左侧截取 Nova 原生 Button/Badge/输入控件，右侧截取规则卡片和标签，用于检查小组件的字号、圆角、描边、图标位置和文字留白。
+
+### Findings
+
+- 最终没有剩余可执行的 P0、P1 或 P2 差异。
+- 规则分区直接复用项目 `radix-nova` 的 `Card size="sm"`、`CardHeader`、`CardTitle` 和 `Button`，卡片保持原生 `rounded-xl`、1 px 弱边界和组件间距；没有重新手写一套卡片或标签。
+- 三个分区均在 Nova 白色表面体系上使用现有语义 token：拦截为极淡红、警告为极淡橙、默认放行为极淡绿；没有为页面散落硬编码颜色。
+- 分区标题下不再添加额外分隔线，`CardHeader` 与 `CardContent` 直接依靠 Nova `size="sm"` 的间距节奏衔接。
+- 数量统计继续使用项目 `Badge`，其 `glass` 变体新增可复用的 `danger / warning / success` tone；颜色体现在半透明渐变、描边和内侧高光上，数字保持正常前景色。
+- 页面右上角使用现有 `Button variant="outline" size="sm"` 提供“恢复默认”；它会写回默认策略，并在已有导入批次时重新校验当前数据。
+- 所有规则标签保持用户从并排对照中明确选定的 `Button size="sm"`：28 px 高度、Nova 小圆角矩形、12.8 px 文字和组件默认水平留白，宽度随文字内容自适应；不使用胶囊形 Badge。
+- 标签使用项目 Button 新增的 `glass` 变体：半透明纵向表面、`backdrop-blur-md`、`backdrop-saturate-150` 和内侧高光 ring；没有外投影，不形成悬浮层级。
+- 固定的“邮箱无效”和可移动标签保持相同外形与文字布局；左侧同一图标位分别使用 Lucide `LockKeyhole` 与 `GripVertical`，固定项没有拖拽监听器。
+- 规则解释只通过 shadcn/Radix `Tooltip` 展示；界面不再放置解释段落或额外的三点移动菜单。
+- 1000 × 620 最小窗口下，两列卡片、全部 9 个标签、设置页 footer 和完成按钮均未重叠、裁切或产生不可用换行。
+
+### Required fidelity surfaces
+
+- Fonts and typography：继续使用 preset 的 Inter Variable；中文使用 Microsoft YaHei UI / Segoe UI 回退。分区标题使用 `CardTitle` 的 Nova 小卡片字号，标签完全使用 `Button size="sm"` 的组件字号，没有私有字号或字重覆盖。
+- Spacing and layout rhythm：两列间距 12 px，三块卡片沿用 Nova `size="sm"` 的 12 px spacing；标签间距 8 px，内容区最小高度收紧到 44 px。卡片圆角与参考的白色面板一致，标签保持用户指定的 Nova 小圆角矩形。
+- Colors and visual tokens：Neutral + Blue 主体系未变；拦截、警告、放行分别使用淡红、淡橙、淡绿语义表面。规则标签仍使用中性玻璃；数量 Badge 使用可复用的红／橙／绿玻璃 tone，文字不随 tone 染色。
+- Image quality and asset fidelity：页面没有照片或插画；所有可见图标来自项目配置的 Lucide 图标库，没有 emoji、手绘 SVG、CSS 图形或占位资产。
+- Copy and content：规则名称保持用户确认的“邮箱无效”“重复创建”“占位符残留”“邮箱重复”等文案；说明只进入 Tooltip，固定规则的 Tooltip 明确说明不能移动。
+- Accessibility and states：可移动规则保留 DnD Kit 的键盘/指针属性和可见焦点；固定规则可聚焦读取 Tooltip；禁用和保存中状态继续使用原生 disabled/opacity 语义。
+
+### Comparison history
+
+1. 第一轮并排对照采用 Nova `Button size="sm"` 圆角矩形规则标签，同时发现卡片内容区留白偏多。
+2. 第二轮曾错误地把“小规则标签”机械理解成 Badge 并改为胶囊形；用户依据局部并排图明确选择第一轮的圆角矩形，这是一次设计判断偏差，不作为最终方向。
+3. 最终修复：恢复 Nova 原生 `Button variant="outline" size="sm"`，把内容区最小高度从 56 px 收紧到 44 px；重新构建并捕获 1366 × 768 与 1000 × 620 页面，未发现新的 P0、P1 或 P2 问题。
+4. 用户继续要求红橙表面更淡，并澄清“质感”指液态玻璃而非阴影层次。最终进一步降低两块语义色浓度，并把标签改为无外投影的 `glass` Button 变体；重新完成两种窗口捕获与交互冒烟。
+5. 本轮加入恢复默认操作，移除三块分区标题下的分隔线，为默认放行加入淡绿色，并把数量统计改成红／橙／绿三种“玻璃本体着色”而非彩色文字。
+
+### Functional evidence
+
+- `npm.cmd run build`：renderer/Electron TypeScript 与 Vite build 全部通过；仅保留既有的大 chunk 提示。
+- `docs/design/implementation/electron-validation-rules-glass-smoke.json`：默认分区、9 个规则、三种 glass 数量 tone、无标题分隔线、锁与六点手柄、Tooltip、拖拽移动与持久化、恢复默认与持久化共 19 项通过，`consoleErrors: []`。
+
+final result: passed
+
+---
+
+## 历史验收：筛选三态与设置页官方 Sidebar
+
+## Comparison target
+
+- 其他已验收界面的 Source visual truth：用户问题截图 `C:/Users/Sean/AppData/Local/Temp/codex-clipboard-c7319e1c-ef8e-47c9-92b1-b79bf1626c02.png` 与 `C:/Users/Sean/AppData/Local/Temp/codex-clipboard-4bdd92ca-b4a8-4ab4-b774-de63f606b98d.png`；继续沿用 shadcn/Mira 的 Neutral + Blue 设计语言。
+- 设置侧栏的实现基准：用户指定的 shadcn preset `b1Ymqvgiw`。官方 CLI 生成的基准为 `base-nova`、Neutral、Blue、`menuAccent: subtle`、`menuColor: default-translucent`；不再以截图取色或项目自定义变体替代组件默认状态。
+- Implementation screenshots：
+  - `docs/design/implementation/local-mail-merge-selected-row-fix-908x630.png`
+  - `docs/design/implementation/local-mail-merge-field-menu-compact-v2.png`
+  - `docs/design/implementation/local-mail-merge-filter-menu-compact.png`
+  - `docs/design/implementation/local-mail-merge-excel-dialog-real-fixed.png`
+  - `docs/design/implementation/local-mail-merge-settings-sidebar-fixed-v3.png`
+  - `docs/design/implementation/local-mail-merge-settings-official-sidebar.png`
+  - `docs/design/implementation/local-mail-merge-status-menu-mira-v3.png`
+  - `docs/design/implementation/local-mail-merge-warning-compact-footer-aligned.png`
+  - `docs/design/implementation/local-mail-merge-filter-partial-polished-final2.png`
+  - `docs/design/implementation/local-mail-merge-settings-gap-active-polished-v3.png`
+  - `docs/design/implementation/local-mail-merge-mira-toolbar-final.png`
+  - `docs/design/implementation/local-mail-merge-filter-thin-separator-final.png`
+  - `docs/design/implementation/local-mail-merge-settings-plain-selection-final.png`
+  - `docs/design/implementation/local-mail-merge-settings-shadcn-default-size-final.png`
+- Combined comparison inputs：
+  - `docs/design/implementation/qa-excel-source-left-fixed-right.png`
+  - `docs/design/implementation/qa-settings-source-left-fixed-right.png`
+  - `docs/design/implementation/qa-settings-sidebar-source-left-fixed-right.png`
+  - `docs/design/implementation/qa-filter-source-left-fixed-right.png`
+  - `docs/design/implementation/qa-settings-gap-active-source-left-fixed-right.png`
+  - `docs/design/implementation/qa-filter-line-before-left-after-right.png`
+  - `docs/design/implementation/qa-settings-selection-before-left-after-right.png`
+  - `docs/design/implementation/qa-toolbar-before-left-after-right.png`
+  - `docs/design/implementation/qa-settings-size-before-left-shadcn-default-right.png`
+- Viewport：主验收 1366 × 768 CSS px；另在应用允许的最小窗口 1000 × 620 CSS px 复核，截图参数请求 908 × 630 时由 Electron `minWidth: 1000` 自动约束到 1000 × 630。
+- Pixel density：当前 Windows 设备约为 1.93 device scale；1366 × 768 CSS 捕获为 2634 × 1483 px。组合图把源和实现分别等比归一到 1366 × 768 画布后并排，避免只比较原始像素密度。
+- State：737 条、26 个源字段的真实 Excel 导入；默认邮件签名设置；虚拟表格第二行激活；字段和列筛选菜单展开。
 
 ## Findings
 
-- 没有剩余可执行的 P0、P1 或 P2 差异。
-- 本轮把内置“校验结果”统一渲染为绿色“可创建”、橙色“警告”和红色“已拦截”，不再依赖交接包可选的“审核状态”字段。右侧滚动后的表格截图确认三种标签在同一列中对齐，长内容仍保持单行省略。
-- 表头列边界增加了 7 px 可拖拽命中区，拖动时显示企业蓝定位线；字段筛选支持按钮再次点击收起，以及点击弹层外任意页面区域自动关闭。
-- 主界面、邮件预览、导入弹窗和设置页的基础字号收敛到 12–14 px，主要按钮收敛到 38–42 px 高；表格正文提升到 12.5 px，避免此前局部 9.5–11.5 px 与默认 16 px 控件混用造成的不协调。
-- 设置打开时，渲染区域与 Electron 原生标题栏覆盖层同步切换为压暗色；关闭设置后恢复。`capturePage()` 仍不包含 Windows 原生按钮，但 IPC 冒烟测试已验证开关状态随设置打开/关闭正确切换。
-- 本轮增量没有改变方案 A2 的主页面比例、表格密度或预览层级。路径省略发生在目录中部，`Q2_Transition_Handoff_20250515.json` 完整保留；两个顶部下拉均使用同一套非原生弹层样式。
-- [P3] 批准的方案 A2 是 1581 × 995，本轮实现验收是 1366 × 768，两者纵横比不同。
-  - Location: 整体工作区。
-  - Evidence: `docs/design/implementation/qa-compact-source-left-implementation-right.png`
-  - Impact: 这是用户要求的响应式压缩，不是逐像素复制差异；信息架构、主操作和双弹层关系保持不变。
-  - Fix: 无需修复；已针对该尺寸单独检查。
-- [P3] 表格中的部分长邮箱比设计稿更早出现省略号。
-  - Location: 左侧数据表。
-  - Evidence: 设计稿使用较窄的生成字体；实现使用 Windows 原生 Segoe UI 字体度量并保留真实列宽。
-  - Impact: 不改变行识别、筛选或右侧完整收件人预览；单元格仍有完整值提示。
-  - Fix: 暂不改用非系统窄体字体，避免牺牲公司电脑上的一致性和可读性。
-- [P3] `capturePage()` 不包含 Windows 原生窗口按钮覆盖层。
-  - Location: 标题栏右侧。
-  - Evidence: 设计稿显示最小化、最大化、关闭；对比截图只包含 WebContents。实际 Electron 窗口已启用原生 `titleBarOverlay`。
-  - Impact: 仅是截图工具边界，不是运行时缺失。
-  - Fix: 无代码修复需要。
+- 没有剩余可执行的 P0、P1 或 P2 问题。
+- 列筛选的“全选当前字段”现在是独立固定控制区，与值列表之间复用和邮件签名下拉菜单相同的 shadcn `Separator` 1 px 弱边界；复选框和文本起点与下方值行对齐。
+- 当值列表只选中一部分时，全选复选框使用蓝底横杠的 `indeterminate` 状态；全选、部分选、全不选三态会随下方值实时联动。
+- 设置弹窗移除了 Dialog 默认 Grid 的 16 px 行间隙，header、Sidebar 内容和 footer 现在首尾连续，不再出现截图标出的两条白色空带。
+- 设置侧栏当前项使用普通淡蓝底选中态，不再带左侧 primary 蓝指示条，也没有粉色细边、白色卡片或浮起阴影。
+- 主搜索框压缩为 28 px Mira 密度，圆角、图标和 11.5 px 字号与同栏“全部状态”“字段”控件统一。
+- 设置侧栏菜单不再使用项目自定义状态 CSS；直接使用 shadcn `SidebarMenuButton size="lg"` 的 48 px 行高、14 px 字号、16 px 图标和 8 px 内边距，以及组件自带的 Hover/Active 规则。
+- 设置导航已从手工仿 Sidebar 的垂直 Tabs 替换为 shadcn 官方 `SidebarProvider / Sidebar / SidebarContent / SidebarGroup / SidebarMenu / SidebarMenuButton / SidebarInset` 组合；激活、悬停和内容面板都由 Sidebar 语义承载。
+- 补回 preset 默认的 `shadcn/tailwind.css`，让 `data-active={false}` 按官方语义排除未选中项；恢复官方 Sidebar 源码输出，并把 `--sidebar-accent` 恢复为 preset 的 `oklch(0.97 0 0)`。没有新增私有 Sidebar 变体或覆盖选择器。
+- 状态筛选由 Select 替换为当前 Mira preset 的半透明 `DropdownMenuRadioGroup`，188 px 宽、7 个 27 px 选项行，当前状态使用右侧蓝色勾选。
+- footer 的选择人数和 Outlook 提示统一为 22 px 行盒并按中心线对齐，数值仍保留更强的视觉权重。
+- 邮件预览警告框标题为 12 px、说明为 11.5 px，均不大于 13 px 邮件正文；内边距和图标同步缩小，避免警告卡片压过正文层级。
+- 虚拟表格激活态现在由整行统一承载，背景和左侧蓝色指示贯穿全部可见列，不再只出现在复选框列。
+- 第一列头部和行内复选框都以单元格中心对齐；可选未选、蓝色选中、灰色禁用三态清晰，沿用 Radix/shadcn Checkbox，不再是黑色勾号。
+- 表头与虚拟行共享同一组 CSS 列宽变量和明确的总表宽；在总列宽小于视口时仍保持每个表头与正文单元格的 left/width 一致。拖动过程保留实时反馈，松手后提交表格状态。
+- 字段管理和列筛选菜单采用紧凑标题、28 px 搜索框、26 px 选项行与固定底部操作区；长列表在内容区滚动，菜单本身不裁切底部按钮。字段菜单 258 px、筛选菜单 232 px，接近 Mira 的信息密度。
+- Excel 导入预览不再把 26 列硬压入弹窗。数据列维持 144 px 可读宽度、首列 52 px，表头吸顶，横向滚动查看其余字段；真实 737 条文件的前五行、字段数、预计导入数与操作区均完整显示。
+- 设置页侧栏使用 196 px 明确分类导航，当前项只使用淡蓝底，其他项有统一图标、行高和悬停状态。
+- [P3] Excel 预览的横向滚动条在当前 Windows 高 DPI 环境下仍使用系统滚动条外观。这不会影响可用性，并能清楚表达“还有更多字段”；如后续追求更弱的视觉存在感，可单独统一应用内滚动条 token。
 
 ## Required fidelity surfaces
 
-- Fonts and typography: 采用 Segoe UI / Microsoft YaHei UI；标题、统计数字、标签和正文层级与设计稿一致。设置页沿用同一字体层级，长说明使用较低对比度而不抢主操作。
-- Spacing and layout rhythm: 1366 × 768 下顶栏、统计区、主分栏、表格、预览和底部操作区全部可见。按钮、下拉框、表格行、工具栏和标题栏高度已统一压缩；字段管理、筛选、警告确认和设置弹层没有裁切、碰撞或主按钮移位。
-- Custom dropdown layout: 账户和邮件签名弹层从对应触发器向下展开，宽度覆盖完整主要信息；选中态、悬停态、圆角、描边和阴影与字段筛选弹层属于同一视觉系统。邮件签名底部操作区有明确分隔线，未与签名选项混在一起。
-- Excel import layout: 弹窗在方案 A2 主界面上使用居中宽幅工作区；Sheet/字段行控制、推荐提示、横向可滚动表格与固定底部操作区分层清楚，在当前窗口工作区内没有遮挡或按钮移位。
-- Colors and visual tokens: 使用设计稿的冷白背景、企业蓝主操作色和绿/橙/红语义状态色；设置页复用相同边框、浅蓝选中态、圆角和阴影层级。
-- Image quality and asset fidelity: 本应用没有照片或插图。所有可见功能图标来自 Fluent UI React Icons，没有使用 emoji、手绘 SVG、CSS 图形或占位资产替代。
-- Copy and content: 页面、创建确认框、导入提示及设置页已统一使用“邮件签名/签名”，不再混用“公司模板”。主界面继续使用“可创建（含警告）/无警告/有警告/硬拦截”的分级文案。
-- Accessibility and states: 自定义下拉使用按钮、`listbox`、`option`、`aria-expanded` 和 `aria-selected` 语义，支持 Escape 关闭、方向键打开及可见焦点；警告记录默认不勾选但用户可主动勾选，硬拦截记录不可勾选。
+- Fonts and typography：保持 preset 的 Inter Variable；中文使用 Microsoft YaHei UI / Segoe UI 回退。表格与菜单正文 11.5–12.5 px、弹窗标题 16 px，真实长字段通过省略号而不是逐字压缩。
+- Spacing and layout rhythm：32 px 表格行、34 px 表头、26 px 菜单项、32 px 导入选择框；弹窗、侧栏和底部操作区在 1000 × 620 最小窗口无重叠或裁切。
+- Colors and visual tokens：继续使用 Neutral/Blue 主题变量；选中为 primary 蓝、禁用为 muted、警告/拦截保持语义色，没有新增散落的硬编码品牌色。
+- Image quality and asset fidelity：界面无照片或插图；可见图标来自 Lucide，功能控件来自 shadcn/Radix，没有 emoji、手绘 SVG、CSS 图形或占位资产。
+- Copy and content：保留“设置 Excel 导入”“人员数据所在的 Sheet”“字段名称所在行”“预计导入 737 条记录”等现有产品文案；字段名与数据值来自真实交接包，没有使用假缩写替代实际预览。
+- Accessibility and states：复选框有明确 accessible name；禁用态使用原生 `disabled`/Radix data state；列宽分隔器支持键盘左右键；菜单、Select、Dialog 保留 Radix 焦点与外部点击关闭语义。
 
-## Comparison evidence
+## Focused region comparison
 
-- full-view comparison: `docs/design/implementation/qa-full-reference-left-implementation-right.png`（左为设计稿，右为实现）
-- compact laptop comparison: `docs/design/implementation/qa-compact-source-left-implementation-right.png`（左为 1581 × 995 方案 A2，右为 1366 × 768 紧凑实现）
-- current main comparison: `docs/design/implementation/qa-previous-left-signature-ui-right.png`（左为此前已通过的 1366 × 768 方案 A2 实现，右为本轮路径、账户和邮件签名增量实现）
-- table interaction comparison: `docs/design/implementation/qa-source-left-table-validation-resize-right.png`（左为方案 A2，右为本轮统一字号、表头交互与紧凑表格实现）
-- validation label comparison: `docs/design/implementation/qa-source-left-validation-labels-right.png`（左为方案 A2，右为横向滚动至内置“校验结果”列后的三档固定标签）
-- settings density comparison: `docs/design/implementation/qa-previous-settings-left-current-dimmed-right.png`（左为此前已通过的设置页，右为本轮统一字号与遮罩后的设置页）
-- custom dropdown comparison: `docs/design/implementation/qa-account-menu-left-signature-menu-right.png`（左为账户下拉，右为邮件签名下拉；用于核对同一位置、密度、选中态、阴影及底部分隔操作）
-- tiered validation comparison: `docs/design/implementation/qa-compact-warning-confirm-left-safety-right.png`（左为警告记录创建确认，右为设置中的分级规则）
-- Excel import full-view comparison: `docs/design/implementation/qa-import-dialog-source-left-implementation-right.png`（左为批准的方案 A2，右为导入弹窗实现）
-- Excel import modal-language comparison: `docs/design/implementation/qa-import-dialog-modal-language-left-implementation-right.png`（左为已验收设置弹窗，右为导入弹窗；用于检查同一产品内的字体、色彩、圆角、阴影与操作层级）
-- focused table comparison: `docs/design/implementation/qa-table-reference-left-implementation-right.png`
-- focused preview comparison: `docs/design/implementation/qa-preview-reference-left-implementation-right.png`
-- 设置框和顶部自定义下拉不是原 A2 设计图中的展开状态；因此以已批准 A2 及此前已通过的 1366 × 768 实现作为视觉约束，分别检查邮件签名、Outlook、导入与安全状态。
-- Excel 导入弹窗同样不是原 A2 设计图中的展开状态，因此不做不存在的逐像素断言；以 A2 主界面和已验收设置弹窗作为可见视觉约束。字段表格在全屏对比中已足够清晰，另一个弹窗语言对比图覆盖了关键表面，未再增加裁剪图。
+- 主表：在最小窗口查看第一列、激活第二行及跨列背景，确认选框中心、三态对比与整行高亮。
+- 字段/筛选菜单：展开后检查标题、搜索、全部选项滚动区域、底部按钮边界；没有用全屏截图替代小组件核对。
+- Excel：使用用户提供的原始截图与真实 26 字段实现截图组成单一并排输入，重点核对列可读性、横向滚动、表头/正文边界和 footer。
+- 设置页：使用用户截图与修改后截图组成单一并排输入，重点核对侧栏导航层级、激活态、主内容比例和弹窗边界。
 
 ## Comparison history
 
-1. Baseline P1: 旧 WinForms 界面出现控件裁切、字号过大、表格密度和邮件预览与方案 A2 明显不一致。
-   - Earlier evidence: `docs/design/implementation/local-mail-merge-preview.png`
-   - Fix: 用 Electron + React + TypeScript 重建界面外壳，并保持 C# Core/Outlook Worker 作为进程边界。
-   - Post-fix evidence: 最终全屏对比图。
-2. Electron iteration P2: 首轮 Electron 截图中右侧邮件正文和元数据偏小，分隔线与正文起点比设计稿高。
-   - Fix: 调整预览内边距、元数据间距、分隔线和正文的字号、行高与段距。
-   - Post-fix evidence: 最终预览局部对比图。
-3. Electron iteration P2: 参考状态的筛选弹层最初显示全部七项勾选，而设计稿只勾选前三项。
-   - Fix: 同步筛选弹层的当前应用值，并让参考捕获状态显示前三个已选值；正式筛选行为不变。
-   - Post-fix evidence: 最终表格局部对比图。
-4. Settings iteration P2: 原主界面“公司模板”是文件路径框，设置按钮没有行为，不能表达“选择应用内模板”的产品模型。
-   - Fix: 顶部改为真实模板下拉框；新增同一设计系统的设置对话框，集中管理公司模板、Outlook 账户以及固定导入安全规则。
-   - Post-fix evidence: 三张设置页标准化截图；主界面截图中的模板下拉框显示当前应用内模板。
-5. Excel import extension: 本轮初次并排比较未发现可执行的 P0、P1 或 P2 视觉差异。
-   - Functional refinement: 将底部“预计导入”数量改为随用户所选字段行实时重新计算，避免用户手动切换字段行后仍显示自动推荐行对应的旧数量。
-   - Post-fix evidence: `docs/design/implementation/local-mail-merge-electron-import-dialog-normalized.png`；默认推荐状态的视觉布局不变，构建和打包态交互均重新通过。
-6. Laptop-density iteration P1: 默认窗口、按钮、下拉框、统计区、表格行和底部操作区在笔记本屏幕上偏大。
-   - User evidence: 2026-08-10 用户明确指出“UI 尺寸偏大，按钮高度等在笔记本上显示不好”。
-   - Fix: 默认窗口改为 1440 × 860，最小 1100 × 680；新增 1440 宽度与 820 高度响应式密度规则，同步压缩所有主要控件。
-   - Post-fix evidence: `docs/design/implementation/local-mail-merge-electron-compact-1366x768-normalized.png`；底部 CTA 、右侧预览、字段管理和筛选弹层均完整可见。
-7. Validation-autonomy iteration P1: 旧校验把未批准、内容不完整、来源或哈希缺失全部作为禁止创建，用户无法主动处理。
-   - User evidence: 2026-08-10 用户要求区分真正拦截与警告提示。
-   - Fix: 只对无效邮箱、禁止联系、已声明内容哈希不匹配、person_id 重复和已成功创建的同内容硬拦截；其余转为默认不勾选、但可人工选中继续的警告。
-   - Post-fix evidence: `docs/design/implementation/qa-compact-warning-confirm-left-safety-right.png`；打包态交互验收覆盖警告选择、预览、创建确认与硬拦截禁选。
-8. Signature and account dropdown iteration: 首次并排比较没有发现可执行的 P0、P1 或 P2 差异。
-   - User request: 路径中间省略但保留完整文件名；“公司模板”统一改为“邮件签名”；账户和签名使用非 Windows 原生下拉；签名菜单底部增加分隔的“添加新签名”。
-   - Fix: 新增目录可收缩、文件名固定显示的路径布局；账户和签名改为可访问的 React 自定义下拉；“添加新签名”直接打开邮件签名设置页；同步主页面、设置、对话框及错误提示术语。
-   - Post-fix evidence: `docs/design/implementation/qa-previous-left-signature-ui-right.png`、`docs/design/implementation/qa-account-menu-left-signature-menu-right.png` 和邮件签名设置截图。
-9. Table interaction and typography iteration: 首次实现后自动化与并排视觉检查均未发现可执行的 P0、P1 或 P2 差异。
-   - User request: 内置校验结果使用三档固定标签；列宽可拖拽；筛选点击外部关闭；全局字号和控件密度统一；设置遮罩覆盖原生标题栏按钮。
-   - Fix: 校验结果改为绿/橙/红语义标签；TanStack Table 使用 `onChange` 列宽模式并增加表头拖拽条；筛选弹层监听外部 `pointerdown`；统一基础字号与主要控件尺寸；通过受限 IPC 调用 `BrowserWindow.setTitleBarOverlay()` 同步标题栏颜色。
-   - Post-fix evidence: `docs/design/implementation/qa-source-left-table-validation-resize-right.png`、`docs/design/implementation/qa-source-left-validation-labels-right.png`、`docs/design/implementation/qa-previous-settings-left-current-dimmed-right.png`；33 项开发态交互检查全部通过。
+1. 用户截图暴露六个 P1/P2 问题：整行高亮断裂、复选框状态弱、菜单过松且裁切、短总列宽错位、Excel 预览列被压扁、设置导航半成品。
+2. 第一轮统一虚拟表格的 header/body flex 与列宽变量，修改 Radix Checkbox data-state 样式，压缩两个 Popover，并重排 Excel/设置弹窗。
+3. 截图复核发现字段菜单底部隐藏字段显示不足，内容区高度从 292 px 调整为受视口约束的 338 px，固定 footer 保持可见。
+4. 第二轮在真实 737 条、26 字段 Excel 上捕获，确认字段文字可读、横向滚动存在、行列对齐；设置页和激活行分别在最小窗口捕获，未发现新的 P0/P1/P2 视觉问题。
 
 ## Functional evidence
 
-- primary interactions tested: 字段管理打开/关闭、显示字段增减、目标岗位筛选打开/应用、点击行更新邮件预览、邮件签名下拉框加载、设置打开/切换三页/关闭、已拦截原因显示、创建草稿确认框打开/关闭。
-- latest incremental smoke result: `docs/design/implementation/electron-signature-ui-smoke.json`，路径结构、自定义账户下拉、自定义邮件签名下拉、“添加新签名”跳转及原有核心流程共 26 项全部通过，`consoleErrors: []`。
-- current table interaction smoke result: `docs/design/implementation/electron-table-interactions-smoke.json`，三档校验标签、拖拽列宽、筛选外部点击关闭、设置标题栏遮罩开关及原有核心流程共 33 项全部通过，`consoleErrors: []`。
-- packaged v0.1.3 smoke result: `src/LocalMailMerge.Desktop/out/qa/packaged-smoke-v0.1.3.json`，从新生成的便携 ZIP 独立解压后运行，33 项全部通过，`consoleErrors: []`；可执行文件版本为 `0.1.3`。
-- development smoke result: `docs/design/implementation/electron-compact-validation-smoke.json`，20 项核心交互全部通过，`consoleErrors: []`。
-- packaged EXE smoke result: `docs/design/implementation/packaged-compact-validation-smoke.json`，20 项核心交互全部通过，`consoleErrors: []`。
-- Excel import dialog development smoke: `docs/design/implementation/electron-import-dialog-smoke.json`，Sheet 列表、自动推荐、预览、切换和关闭均通过。
-- Excel import dialog packaged EXE smoke: `docs/design/implementation/packaged-import-dialog-smoke.json`，全部检查通过且 `consoleErrors: []`。
-- packaged template catalog result: `docs/design/implementation/packaged-template-catalog-smoke.json`，导入复制、设为当前项、删除均通过。
-- packaged multi-sheet import smoke: `docs/design/implementation/packaged-multisheet-import-smoke.json`，全部界面交互通过且 `consoleErrors: []`。
-- console errors checked: 开发态和打包态均为 `consoleErrors: []`。
-- data/worker check: Core 回归测试 7/7 通过。打包版 Worker 对用户提供的 6 工作表人才清单选择 `Talent List` 第 1 行后读取 737 人：644 条可创建且均作为警告记录供人工选择，93 条因缺少或无效邮箱硬拦截；没有修改原始工作簿。
-- Outlook environment check: 当前测试机未检测到经典 Outlook；设置页会显示检测失败/空状态，创建草稿前仍会再次校验账户。此环境结果不影响演示态视觉验收。
-
-## Implementation checklist
-
-- [x] 顶部“公司模板”统一改为“邮件签名”，并使用应用内自定义签名下拉框。
-- [x] 设置中支持导入、选择、删除用户签名和打开签名目录。
-- [x] 交接包路径在目录中间省略，完整保留末尾文件名。
-- [x] Outlook 账户使用与应用风格一致的自定义下拉菜单。
-- [x] 邮件签名下拉底部提供分隔的“添加新签名”，并打开邮件签名设置页。
-- [x] 设置中支持重新检测经典 Outlook 账户。
-- [x] 设置中解释且固定启用草稿保存、重新校验、人工批准、重复保护与审计规则。
-- [x] 普通 Excel 仍保留全部行，并向用户展示具体拦截原因。
-- [x] Excel 选择后显示 Sheet/字段行确认弹窗，并提供字段和前 5 条记录预览。
-- [x] 自动推荐可被用户覆盖，打包版仍会使用同一选择重新读取文件。
-- [x] 完成开发态、打包态、签名目录、Core 回归和视觉对比验收。
-- [x] 1366 × 768 下完成主界面、弹层、确认框和设置页紧凑布局验收。
-- [x] 分级校验、警告记录手动选择、硬拦截禁选与创建前警告汇总验收。
-- [x] 内置校验结果固定渲染为“可创建 / 警告 / 已拦截”三档语义标签。
-- [x] 表头拖拽调整列宽及双击恢复默认宽度。
-- [x] 筛选弹层点击页面外部自动关闭，按钮再次点击也可收起。
-- [x] 主界面、表格、邮件预览、导入和设置页字体及控件密度统一。
-- [x] 设置弹窗打开/关闭时同步压暗/恢复 Electron 原生标题栏覆盖层。
+- `npm run build`：renderer/Electron TypeScript 与 Vite build 全部通过。
+- `npx shadcn@latest add sidebar --dry-run --diff renderer/components/ui/sidebar.tsx`：官方 CLI 返回 `No changes`，确认本地 Sidebar 组件源码与当前 preset registry 一致。
+- `docs/design/implementation/electron-sidebar-official-preset-smoke.json`：针对设置页的官方结构、Active/Inactive 区分、页面切换、标题栏压暗和关闭恢复均通过，`consoleErrors: []`；同一历史综合脚本中若干与本轮无关的旧尺寸断言仍失败，未将其伪报为整套通过。
+- `docs/design/implementation/electron-sidebar-mira-footer-warning-smoke.json`：官方 Sidebar 结构、Mira Radio Menu、菜单紧凑度、footer 中心线和警告字号，以及原有核心流程共 59 项通过，`consoleErrors: []`。
+- `docs/design/implementation/electron-filter-settings-polish-smoke.json`：筛选全选三态、横杠图标、主从项对齐、分隔线、设置页零 Grid gap、区域连续性和统一激活态等共 65 项全部通过，`consoleErrors: []`。
+- `docs/design/implementation/electron-mira-search-line-sidebar-smoke.json`：进一步验证 1 px shadcn 分隔线、无侧边指示条的设置选中态以及 28 px Mira 主搜索框，共 66 项全部通过，`consoleErrors: []`。
+- `docs/design/implementation/electron-shadcn-sidebar-default-smoke.json`：验证设置菜单恢复 shadcn 默认尺寸及既有交互，共 67 项全部通过，`consoleErrors: []`。
+- `docs/design/implementation/electron-ui-fixes-import-smoke.json`：Excel 固定可读列、横向滚动、表头/正文对齐、自定义 Select、Sheet 切换与预览更新共 12 项通过，`consoleErrors: []`。
+- `docs/design/implementation/electron-ui-fixes-large-batch-smoke.json`：真实 737 条、27 字段文件仅挂载 25 行；导入渲染 1284 ms、滚到底 46 ms、预览切换 40 ms、搜索 183 ms、选择 18 ms，列宽拖动实时反馈与松手提交均通过，`consoleErrors: []`。
+- 本轮未修改 Worker、Excel 解析协议、校验规则、Outlook 草稿 `Save()` 或 IPC 安全边界。
 
 final result: passed

@@ -81,6 +81,53 @@ export interface TemplateState {
   selectedTemplateId: string;
 }
 
+export type ValidationRuleId =
+  | 'invalid_email'
+  | 'already_created'
+  | 'missing_subject'
+  | 'missing_body'
+  | 'unresolved_placeholder'
+  | 'duplicate_email'
+  | 'review_not_approved'
+  | 'missing_personalization_source'
+  | 'content_hash_mismatch';
+
+export type ValidationRuleLevel = 'blocking' | 'warning' | 'pass';
+
+export interface ValidationPolicyState {
+  version: 1;
+  rules: Record<ValidationRuleId, ValidationRuleLevel>;
+}
+
+export type DraftCreationOutcome = 'Success' | 'Skipped' | 'Failed';
+
+export interface DraftCreationItemResult {
+  personId: string;
+  outcome: DraftCreationOutcome;
+  outlookEntryId: string;
+  errorCode: string;
+  errorMessage: string;
+}
+
+export interface DraftCreationResponse {
+  reportPath: string;
+  summary: {
+    success: number;
+    skipped: number;
+    failed: number;
+  };
+  results: DraftCreationItemResult[];
+}
+
+export interface CreateDraftsRequest {
+  packagePath: string;
+  worksheetName?: string;
+  headerRowNumber?: number;
+  templateId: string;
+  selectedPersonIds: string[];
+  account: OutlookAccount;
+}
+
 export interface DesktopApi {
   selectPackage(): Promise<string | null>;
   inspectXlsx(filePath: string): Promise<XlsxWorkbookInspection>;
@@ -91,7 +138,10 @@ export interface DesktopApi {
   deleteTemplate(id: string): Promise<TemplateState>;
   selectTemplate(id: string): Promise<TemplateState>;
   openTemplateFolder(): Promise<void>;
-  createDrafts(payload: unknown): Promise<unknown>;
+  getValidationPolicy(): Promise<ValidationPolicyState>;
+  saveValidationPolicy(value: ValidationPolicyState): Promise<ValidationPolicyState>;
+  createDrafts(payload: CreateDraftsRequest): Promise<DraftCreationResponse>;
+  showReport(reportPath: string): Promise<void>;
   minimize(): Promise<void>;
   toggleMaximize(): Promise<boolean>;
   isMaximized(): Promise<boolean>;

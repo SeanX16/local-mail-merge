@@ -1,0 +1,18 @@
+{
+  "checks": {
+    "dialogOpened": true,
+    "recommendedSelection": true,
+    "previewVisible": true,
+    "previewUsesReadableFixedColumns": true,
+    "previewScrollsHorizontally": true,
+    "previewKeepsRowsAligned": true,
+    "usesCustomSheetSelect": true,
+    "usesCustomHeaderSelect": true,
+    "allSheetsListed": true,
+    "sheetChanged": true,
+    "previewUpdated": true,
+    "dialogClosed": true
+  },
+  "passed": true,
+  "consoleErrors": []
+}

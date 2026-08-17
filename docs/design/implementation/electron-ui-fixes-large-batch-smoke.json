@@ -1,0 +1,30 @@
+{
+  "checks": {
+    "importDialogOpened": true,
+    "largeBatchRendered": true,
+    "actualLargeBatch": true,
+    "rowsAreVirtualized": true,
+    "realFieldsLoaded": true,
+    "lastRowReachable": true,
+    "scrollResponsive": true,
+    "previewTracksRow": true,
+    "previewResponsive": true,
+    "searchCompleted": true,
+    "searchResponsive": true,
+    "columnResizeHasLiveFeedback": true,
+    "columnResizeCommitted": true,
+    "selectionResponsive": true
+  },
+  "metrics": {
+    "totalRows": 737,
+    "renderedRows": 25,
+    "fieldCountText": "6 / 27 字段",
+    "importAndRenderMs": 1284,
+    "scrollToEndMs": 46,
+    "previewSwitchMs": 40,
+    "searchNoMatchMs": 183,
+    "selectionMs": 18
+  },
+  "passed": true,
+  "consoleErrors": []
+}

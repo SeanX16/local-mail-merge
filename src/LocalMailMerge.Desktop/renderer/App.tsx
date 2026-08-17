@@ -28,15 +28,21 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
 import { demoBatch } from './demoData';
+import { DraftCreationResultDialog } from './DraftCreationResultDialog';
 import { ExcelImportDialog } from './ExcelImportDialog';
 import { SettingsDialog, type SettingsTab } from './SettingsDialog';
 import { ColumnFilterMenu, ReviewBadge, ValidationBadge } from './features/mail-merge/MailMergeControls';
 import { MailMergeWorkspace, type StatusMode } from './features/mail-merge/MailMergeWorkspace';
+import { validationLevelLabels } from './validationRules';
 import type {
   BatchViewModel,
+  DraftCreationResponse,
   MailRecord,
   OutlookAccount,
   TemplateState,
+  ValidationPolicyState,
+  ValidationRuleId,
+  ValidationRuleLevel,
   XlsxImportOptions,
   XlsxWorkbookInspection
 } from './types';
@@ -57,6 +63,21 @@ const previewTemplateState: TemplateState = {
     source: 'bundled'
   }],
   selectedTemplateId: 'bundled:company_signature.sample.html'
+};
+
+const defaultValidationPolicy: ValidationPolicyState = {
+  version: 1,
+  rules: {
+    invalid_email: 'blocking',
+    already_created: 'blocking',
+    missing_subject: 'warning',
+    missing_body: 'warning',
+    unresolved_placeholder: 'warning',
+    duplicate_email: 'warning',
+    review_not_approved: 'pass',
+    missing_personalization_source: 'pass',
+    content_hash_mismatch: 'pass'
+  }
 };
 
 const previewXlsxInspection: XlsxWorkbookInspection = {
@@ -91,6 +112,12 @@ function safeMessage(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败，请重试。';
 }
 
+interface CreationResultState {
+  response: DraftCreationResponse;
+  records: MailRecord[];
+  revalidationError?: string;
+}
+
 export function App() {
   const [batch, setBatch] = useState<BatchViewModel>(demoBatch);
   const [accounts, setAccounts] = useState<OutlookAccount[]>(() => window.desktopApi ? [] : [fallbackAccount]);
@@ -115,6 +142,9 @@ export function App() {
   const [creating, setCreating] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
   const [pendingXlsxImport, setPendingXlsxImport] = useState<{ filePath: string; inspection: XlsxWorkbookInspection } | null>(null);
+  const [creationResult, setCreationResult] = useState<CreationResultState | null>(null);
+  const [validationPolicy, setValidationPolicy] = useState<ValidationPolicyState>(defaultValidationPolicy);
+  const [hasImportedPackage, setHasImportedPackage] = useState(false);
 
   const queryParameters = new URLSearchParams(window.location.search);
   const referenceState = queryParameters.get('referenceState') === '1';
@@ -131,6 +161,7 @@ export function App() {
   const filterMenuState = queryParameters.get('filterMenuState') === '1';
   const statusMenuState = queryParameters.get('statusMenuState') === '1';
   const selectedRowState = queryParameters.get('selectedRowState') === '1';
+  const creationResultState = queryParameters.get('creationResultState') === '1';
 
   useEffect(() => {
     void refreshAccounts(false);
@@ -140,6 +171,9 @@ export function App() {
         setTemplateState(state);
         setSelectedTemplateId(state.selectedTemplateId);
       })
+      .catch((error) => toast.error(safeMessage(error)));
+    window.desktopApi.getValidationPolicy()
+      .then(setValidationPolicy)
       .catch((error) => toast.error(safeMessage(error)));
   }, []);
 
@@ -194,6 +228,23 @@ export function App() {
     }, 100);
     return () => window.clearTimeout(timer);
   }, [batch.records, warningPreviewState, warningState]);
+
+  useEffect(() => {
+    if (!creationResultState) return;
+    const previewRecords = demoBatch.records.slice(0, 2);
+    const timer = window.setTimeout(() => setCreationResult({
+      response: {
+        reportPath: 'C:\\Users\\Example\\AppData\\Local\\HKRC\\LocalMailMerge\\reports\\demo_batch_20260813_153000.json',
+        summary: { success: 1, skipped: 0, failed: 1 },
+        results: [
+          { personId: previewRecords[0]?.personId ?? 'demo_001', outcome: 'Success', outlookEntryId: 'demo-entry', errorCode: '', errorMessage: '' },
+          { personId: previewRecords[1]?.personId ?? 'demo_002', outcome: 'Failed', outlookEntryId: '', errorCode: 'COMException', errorMessage: 'Outlook 暂时无法保存此草稿，请确认经典 Outlook 已启动后重试。' }
+        ]
+      },
+      records: previewRecords
+    }), 90);
+    return () => window.clearTimeout(timer);
+  }, [creationResultState]);
 
   const filteredByStatus = useMemo(() => batch.records.filter((record) => {
     if (statusMode === 'all') return true;
@@ -339,11 +390,12 @@ export function App() {
     try {
       const imported = await window.desktopApi.importPackage(filePath, options);
       resetForBatch(imported);
+      setHasImportedPackage(true);
       setPendingXlsxImport(null);
       const creatable = imported.aggregate?.creatable ?? imported.records.filter((record) => record.canCreate).length;
       const warningCount = imported.aggregate?.review ?? imported.records.filter((record) => record.validationKind === 'review').length;
       const blocked = imported.aggregate?.blocked ?? imported.records.filter((record) => !record.canCreate).length;
-      toast.success(`已识别 ${imported.records.length} 条记录：${creatable} 条可创建，${warningCount} 条有警告，${blocked} 条硬拦截。`);
+      toast.success(`已识别 ${imported.records.length} 条记录：${creatable} 条${validationLevelLabels.pass}，${warningCount} 条${validationLevelLabels.warning}，${blocked} 条${validationLevelLabels.blocking}。`);
     } catch (error) {
       toast.error(safeMessage(error));
       throw error;
@@ -368,6 +420,56 @@ export function App() {
       if (announce) toast.error(message);
     } finally {
       setAccountsLoading(false);
+    }
+  }
+
+  async function applyValidationPolicy(nextPolicy: ValidationPolicyState) {
+    if (!window.desktopApi) {
+      setValidationPolicy(nextPolicy);
+      return;
+    }
+
+    const saved = await window.desktopApi.saveValidationPolicy(nextPolicy);
+    setValidationPolicy(saved);
+    if (hasImportedPackage) {
+      const options = batch.sourceWorksheetName && batch.headerRowNumber
+        ? { worksheetName: batch.sourceWorksheetName, headerRowNumber: batch.headerRowNumber }
+        : undefined;
+      const refreshed = await window.desktopApi.importPackage(batch.sourcePath, options);
+      setBatch(refreshed);
+      setRowSelection(Object.fromEntries(
+        refreshed.records
+          .filter((record) => record.initiallySelected)
+          .map((record) => [record.id, true])
+      ));
+      setActiveRecordId((current) => refreshed.records.some((record) => record.id === current)
+        ? current
+        : refreshed.records[0]?.id ?? '');
+    }
+  }
+
+  async function moveValidationRule(ruleId: ValidationRuleId, level: ValidationRuleLevel) {
+    const nextPolicy: ValidationPolicyState = {
+      version: 1,
+      rules: { ...validationPolicy.rules, [ruleId]: level }
+    };
+    try {
+      await applyValidationPolicy(nextPolicy);
+    } catch (error) {
+      toast.error(safeMessage(error));
+    }
+  }
+
+  async function resetValidationPolicy() {
+    const nextPolicy: ValidationPolicyState = {
+      version: 1,
+      rules: { ...defaultValidationPolicy.rules }
+    };
+    try {
+      await applyValidationPolicy(nextPolicy);
+      toast.success('规则设置已恢复为默认值。');
+    } catch (error) {
+      toast.error(safeMessage(error));
     }
   }
 
@@ -438,7 +540,8 @@ export function App() {
     }
     setCreating(true);
     try {
-      await window.desktopApi.createDrafts({
+      const selectedSnapshot = [...selectedRecords];
+      const workerResponse = await window.desktopApi.createDrafts({
         packagePath: batch.sourcePath,
         worksheetName: batch.sourceWorksheetName,
         headerRowNumber: batch.headerRowNumber,
@@ -446,8 +549,43 @@ export function App() {
         selectedPersonIds: selectedRecords.map((record) => record.personId),
         account
       });
-      toast.success(`已保存 ${selectedRecords.length} 封 Outlook 草稿。`);
+      const outcomeCounts = workerResponse.results.reduce((counts, result) => {
+        if (result.outcome === 'Success') counts.success += 1;
+        else if (result.outcome === 'Skipped') counts.skipped += 1;
+        else counts.failed += 1;
+        return counts;
+      }, { success: 0, skipped: 0, failed: 0 });
+      const response: DraftCreationResponse = {
+        ...workerResponse,
+        summary: outcomeCounts
+      };
       setConfirmOpen(false);
+      let revalidationError = '';
+      try {
+        const xlsxOptions = batch.sourceWorksheetName && batch.headerRowNumber
+          ? { worksheetName: batch.sourceWorksheetName, headerRowNumber: batch.headerRowNumber }
+          : undefined;
+        const refreshed = await window.desktopApi.importPackage(batch.sourcePath, xlsxOptions);
+        setBatch(refreshed);
+        setRowSelection((current) => Object.fromEntries(
+          refreshed.records
+            .filter((record) => record.canCreate && current[record.id])
+            .map((record) => [record.id, true])
+        ));
+        setActiveRecordId((current) => refreshed.records.some((record) => record.id === current)
+          ? current
+          : refreshed.records[0]?.id ?? '');
+      } catch (error) {
+        revalidationError = safeMessage(error);
+      }
+      setCreationResult({ response, records: selectedSnapshot, revalidationError: revalidationError || undefined });
+      if (response.summary.failed === 0 && response.summary.skipped === 0) {
+        toast.success(`已实际保存 ${response.summary.success} 封 Outlook 草稿。`);
+      } else if (response.summary.success > 0) {
+        toast.warning(`已保存 ${response.summary.success} 封，${response.summary.failed} 封失败，${response.summary.skipped} 封跳过。`);
+      } else {
+        toast.error(`未保存草稿：${response.summary.failed} 封失败，${response.summary.skipped} 封跳过。`);
+      }
     } catch (error) {
       toast.error(safeMessage(error));
     } finally {
@@ -539,6 +677,9 @@ export function App() {
           onDeleteTemplate={removeTemplate}
           onOpenTemplateFolder={openTemplateFolder}
           onRefreshAccounts={() => refreshAccounts(true)}
+          validationPolicy={validationPolicy}
+          onMoveValidationRule={moveValidationRule}
+          onResetValidationPolicy={resetValidationPolicy}
           onClose={() => setSettingsTab(null)}
         />
       ) : null}
@@ -549,6 +690,22 @@ export function App() {
           inspection={pendingXlsxImport.inspection}
           onConfirm={(options) => finishImport(pendingXlsxImport.filePath, options)}
           onClose={() => setPendingXlsxImport(null)}
+        />
+      ) : null}
+
+      {creationResult ? (
+        <DraftCreationResultDialog
+          response={creationResult.response}
+          records={creationResult.records}
+          revalidationError={creationResult.revalidationError}
+          onShowReport={() => {
+            if (!window.desktopApi) {
+              toast.info('结果报告只在 Electron 版本中生成。');
+              return;
+            }
+            void window.desktopApi.showReport(creationResult.response.reportPath).catch((error) => toast.error(safeMessage(error)));
+          }}
+          onClose={() => setCreationResult(null)}
         />
       ) : null}
 

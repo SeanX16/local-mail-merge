@@ -4,9 +4,9 @@ import { flexRender } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import DOMPurify from 'dompurify';
 import {
-  AlertCircle,
   CheckCircle2,
   ChevronDown,
+  CircleX,
   FileSpreadsheet,
   FolderOpen,
   Info,
@@ -50,6 +50,7 @@ import type {
   TemplateState
 } from '../../types';
 import type { SettingsTab } from '../../SettingsDialog';
+import { getValidationRuleText, validationLevelLabels } from '../../validationRules';
 import {
   CommandDropdown,
   FieldManager,
@@ -118,18 +119,25 @@ const MailPreview = memo(function MailPreview({ activeRecord }: { activeRecord: 
             <div><dt>主题</dt><dd>{activeRecord.subject || '未填写主题'}</dd></div>
             <div><dt>附件</dt><dd>Offer_Letter_{activeRecord.recipientName.replaceAll(' ', '_')}.pdf</dd></div>
           </dl>
-          {activeRecord.validationKind !== 'eligible' ? (
-            <Alert className={cn('validation-banner', activeRecord.canCreate ? 'validation-banner--warning' : 'validation-banner--blocked')} variant={activeRecord.canCreate ? 'default' : 'destructive'}>
-              {activeRecord.canCreate ? <TriangleAlert aria-hidden="true" /> : <AlertCircle aria-hidden="true" />}
-              <AlertTitle>{activeRecord.validationText}</AlertTitle>
-              <AlertDescription>
-                <ul>
-                  {activeValidationIssues.map((issue) => (
-                    <li key={`${issue.code}:${issue.message}`}>{issue.message}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
+          {activeValidationIssues.length ? (
+            <div className="validation-issue-stack" aria-label="校验提示">
+              {activeValidationIssues.map((issue, index) => {
+                const ruleText = getValidationRuleText(issue.code);
+                const blocking = issue.severity === 'blocking' || (!issue.severity && !activeRecord.canCreate);
+                return (
+                  <Alert
+                    key={`${issue.code}:${index}`}
+                    className={cn('validation-issue-card', blocking ? 'validation-issue-card--blocking' : 'validation-issue-card--warning')}
+                    variant="default"
+                    size="sm"
+                  >
+                    {blocking ? <CircleX aria-hidden="true" /> : <TriangleAlert aria-hidden="true" />}
+                    <AlertTitle>{ruleText?.name ?? activeRecord.validationText}</AlertTitle>
+                    <AlertDescription>{ruleText?.description ?? issue.message}</AlertDescription>
+                  </Alert>
+                );
+              })}
+            </div>
           ) : null}
           <Separator />
           <article className="mail-body" dangerouslySetInnerHTML={{ __html: sanitizedBody }} />
@@ -448,9 +456,9 @@ export function MailMergeWorkspace({
 
         <section className="summary-bar" aria-label="导入汇总">
           <SummaryMetric icon={<Users />} label="全部记录" value={aggregate.total} tone="neutral" />
-          <SummaryMetric icon={<CheckCircle2 />} label="可创建" value={aggregate.creatable} tone="success" />
-          <SummaryMetric icon={<TriangleAlert />} label="其中有警告" value={aggregate.review} tone="warning" />
-          <SummaryMetric icon={<AlertCircle />} label="硬拦截" value={aggregate.blocked} tone="danger" />
+          <SummaryMetric icon={<CheckCircle2 />} label={validationLevelLabels.pass} value={aggregate.creatable} tone="success" />
+          <SummaryMetric icon={<TriangleAlert />} label={validationLevelLabels.warning} value={aggregate.review} tone="warning" />
+          <SummaryMetric icon={<CircleX />} label={validationLevelLabels.blocking} value={aggregate.blocked} tone="danger" />
         </section>
 
         <section className="workspace">
