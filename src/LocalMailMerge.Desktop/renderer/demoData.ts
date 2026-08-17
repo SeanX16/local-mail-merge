@@ -1,4 +1,4 @@
-import type { BatchViewModel, FieldDefinition, MailRecord } from './types';
+import type { BatchViewModel, FieldDefinition, MailRecord, ValidationPolicyState, ValidationRuleId } from './types';
 
 export const demoFields: FieldDefinition[] = [
   { key: 'recipient_name', label: '姓名', defaultVisible: true, width: 168 },
@@ -35,6 +35,9 @@ const people = [
   ['Olivia Green', 'olivia.green@example.test', 'Graphics & Spatial', 'CreativeCore', '荷兰', '已批准', 'eligible'],
   ['Tyler Adams', 'tyler.adams@example.test', 'Video & Image', 'SysAdmin Pro', '美国', '未批准', 'blocked']
 ] as const;
+
+// Each rendered row represents a cohort in the 327-record startup example.
+const demoAggregateWeights = [40, 40, 6, 6, 40, 5, 5, 5, 40, 5, 40, 5, 40, 5, 40, 5] as const;
 
 function makeRecord(person: (typeof people)[number], index: number): MailRecord {
   const [name, email, role, organization, country, reviewStatus, kind] = person;
@@ -97,3 +100,57 @@ export const demoBatch: BatchViewModel = {
   records: people.map(makeRecord),
   aggregate: { total: 327, creatable: 312, eligible: 280, review: 32, blocked: 15, duplicate: 15, visible: 124 }
 };
+
+export function applyValidationPolicyToDemoBatch(policy: ValidationPolicyState): BatchViewModel {
+  const records = demoBatch.records.map((record, index) => {
+    const validationIssues = (record.validationIssues ?? []).flatMap((issue) => {
+      if (issue.code === 'invalid_email') return [{ ...issue, severity: 'blocking' as const }];
+      const level = policy.rules[issue.code as ValidationRuleId];
+      if (!level || level === 'pass') return [];
+      return [{ ...issue, severity: level }];
+    });
+    const hasBlockingIssue = validationIssues.some((issue) => issue.severity === 'blocking');
+    const validationKind = hasBlockingIssue ? 'blocked' : validationIssues.length ? 'review' : 'eligible';
+    const canCreate = validationKind !== 'blocked';
+    const validationText = validationKind === 'eligible'
+      ? '通过'
+      : validationKind === 'review'
+        ? '待人工确认'
+        : validationIssues.some((issue) => issue.code === 'invalid_email')
+          ? '邮箱无效'
+          : '已拦截';
+    const validationDetail = validationKind === 'eligible'
+      ? '校验通过，可创建 Outlook 草稿。'
+      : validationKind === 'review'
+        ? '该记录含警告，但仍可由用户选择并创建草稿。'
+        : '该记录触发了拦截规则，不能创建 Outlook 草稿。';
+
+    return {
+      ...record,
+      validationKind,
+      validationText,
+      validationDetail,
+      validationIssues,
+      canCreate,
+      initiallySelected: validationKind === 'eligible' && index < 14,
+      values: { ...record.values, __validation: validationText }
+    } satisfies MailRecord;
+  });
+  const eligible = records.reduce((count, record, index) => count + (record.validationKind === 'eligible' ? demoAggregateWeights[index] : 0), 0);
+  const review = records.reduce((count, record, index) => count + (record.validationKind === 'review' ? demoAggregateWeights[index] : 0), 0);
+  const blocked = records.reduce((count, record, index) => count + (!record.canCreate ? demoAggregateWeights[index] : 0), 0);
+
+  return {
+    ...demoBatch,
+    records,
+    aggregate: {
+      total: demoBatch.aggregate?.total ?? records.length,
+      creatable: eligible + review,
+      eligible,
+      review,
+      blocked,
+      duplicate: demoBatch.aggregate?.duplicate ?? 0,
+      visible: demoBatch.aggregate?.visible ?? records.length
+    }
+  };
+}

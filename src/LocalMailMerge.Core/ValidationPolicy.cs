@@ -14,8 +14,8 @@ public sealed class ValidationPolicy
         {
             ["invalid_email"] = ValidationRuleLevel.Blocking,
             ["already_created"] = ValidationRuleLevel.Blocking,
-            ["missing_subject"] = ValidationRuleLevel.Warning,
-            ["missing_body"] = ValidationRuleLevel.Warning,
+            ["missing_subject"] = ValidationRuleLevel.Blocking,
+            ["missing_body"] = ValidationRuleLevel.Blocking,
             ["unresolved_placeholder"] = ValidationRuleLevel.Warning,
             ["duplicate_email"] = ValidationRuleLevel.Warning,
             ["review_not_approved"] = ValidationRuleLevel.Pass,

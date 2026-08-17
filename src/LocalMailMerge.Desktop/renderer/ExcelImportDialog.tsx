@@ -3,6 +3,7 @@ import { CheckCircle2, FileSpreadsheet, Info, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { HintTooltip } from '@/components/HintTooltip';
 import {
   Dialog,
   DialogContent,
@@ -74,7 +75,9 @@ export function ExcelImportDialog({
           <span className="dialog-title-icon"><FileSpreadsheet /></span>
           <div>
             <DialogTitle>设置 Excel 导入</DialogTitle>
-            <DialogDescription id="excel-import-description" title={filePath}>{fileName}</DialogDescription>
+            <HintTooltip content={filePath} side="bottom">
+              <DialogDescription id="excel-import-description">{fileName}</DialogDescription>
+            </HintTooltip>
           </div>
         </DialogHeader>
 
@@ -120,9 +123,9 @@ export function ExcelImportDialog({
         <div className="excel-preview-frame">
           {preview.headers.length ? (
             <Table className="excel-preview-table" style={{ width: 52 + preview.headers.length * 144 }}>
-              <TableHeader><TableRow><TableHead className="excel-row-number">行</TableHead>{preview.headers.map((header, index) => <TableHead key={`${header}:${index}`} title={header}><span>{header}</span></TableHead>)}</TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead className="excel-row-number">行</TableHead>{preview.headers.map((header, index) => <TableHead key={`${header}:${index}`}><HintTooltip content={header}><span>{header}</span></HintTooltip></TableHead>)}</TableRow></TableHeader>
               <TableBody>
-                {preview.rows.map((row) => <TableRow key={row.rowNumber}><TableCell className="excel-row-number">{row.rowNumber}</TableCell>{preview.headers.map((_, index) => <TableCell key={index} title={row.values[index] ?? ''}><span>{row.values[index] || '—'}</span></TableCell>)}</TableRow>)}
+                {preview.rows.map((row) => <TableRow key={row.rowNumber}><TableCell className="excel-row-number">{row.rowNumber}</TableCell>{preview.headers.map((_, index) => <TableCell key={index}><HintTooltip content={row.values[index] ?? ''}><span>{row.values[index] || '—'}</span></HintTooltip></TableCell>)}</TableRow>)}
               </TableBody>
             </Table>
           ) : <div className="excel-preview-empty">所选行没有可用字段，请选择其他行。</div>}

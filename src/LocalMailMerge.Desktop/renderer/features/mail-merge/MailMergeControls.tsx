@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { HintTooltip } from '@/components/HintTooltip';
 import { cn } from '@/lib/utils';
 import type { FieldDefinition, MailRecord } from '../../types';
 
@@ -155,9 +156,11 @@ export function ValidationBadge({ record }: { record: MailRecord }) {
   const label = tone === 'eligible' ? '可创建' : tone === 'warning' ? '警告' : '已拦截';
   const detail = [record.validationText, record.validationDetail].filter(Boolean).join('：');
   return (
-    <Badge variant="outline" className={`validation-pill validation-pill--${tone}`} title={detail}>
-      {label}
-    </Badge>
+    <HintTooltip content={detail}>
+      <Badge variant="outline" className={`validation-pill validation-pill--${tone}`}>
+        {label}
+      </Badge>
+    </HintTooltip>
   );
 }
 

@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -29,6 +30,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { FieldDescription, FieldLegend, FieldSet } from '@/components/ui/field';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
+import { HintTooltip } from '@/components/HintTooltip';
 import {
   Sidebar,
   SidebarContent,
@@ -94,7 +96,7 @@ export function SettingsDialog({
   onOpenTemplateFolder: () => Promise<void>;
   onRefreshAccounts: () => Promise<void>;
   validationPolicy: ValidationPolicyState;
-  onMoveValidationRule: (ruleId: ValidationRuleId, level: ValidationRuleLevel) => Promise<void>;
+  onMoveValidationRule: (ruleId: ValidationRuleId, level: ValidationRuleLevel, targetRuleId?: ValidationRuleId, edge?: 'before' | 'after') => Promise<void>;
   onResetValidationPolicy: () => Promise<void>;
   appearanceSettings: AppearanceSettingsState;
   onChangeAppearanceSettings: (value: AppearanceSettingsState) => Promise<void>;
@@ -114,7 +116,7 @@ export function SettingsDialog({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="settings-dialog" aria-describedby="settings-description">
+      <DialogContent className="settings-dialog" aria-describedby="settings-description" showCloseButton={false}>
         <DialogHeader className="settings-header">
           <DialogTitle>设置</DialogTitle>
           <DialogDescription id="settings-description">管理应用外观、邮件签名、Outlook 连接和导入安全规则。</DialogDescription>
@@ -270,7 +272,7 @@ export function SettingsDialog({
 
             <section className={cn('settings-section', tab !== 'safety' && 'hidden')}>
               <div className="settings-section-heading">
-                <div><h3>导入与安全</h3><p>拖动规则即可调整处理方式，修改后会立即用于导入和创建前校验。</p></div>
+                <div><h3>导入与安全</h3><p>拖动规则可调整处理方式和先后顺序，修改后会立即用于导入和创建前校验。</p></div>
                 <Button
                   type="button"
                   variant="outline"
@@ -293,6 +295,13 @@ export function SettingsDialog({
           <span>设置保存在当前 Windows 用户的本地应用目录中。</span>
           <Button onClick={onClose}>完成</Button>
         </DialogFooter>
+        <HintTooltip content="关闭" side="bottom">
+          <DialogClose asChild>
+            <Button type="button" variant="ghost" className="settings-dialog-close" aria-label="关闭设置">
+              <span className="window-control-glyph" aria-hidden="true">{'\uE8BB'}</span>
+            </Button>
+          </DialogClose>
+        </HintTooltip>
       </DialogContent>
     </Dialog>
   );

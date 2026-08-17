@@ -149,10 +149,10 @@ static async Task TestXlsxImportAsync()
     Equal("Postdoc", batch.Messages[0].TargetRole, "XLSX role alias");
     Equal("Graphics", batch.Messages[0].Fields["custom_track"], "XLSX dynamic field");
     new ValidationService().Validate(batch, new HashSet<string>());
-    Equal(ValidationState.NeedsReview, batch.Messages[0].Validation.State, "generic XLSX validation state");
-    True(batch.Messages[0].Validation.CanCreate, "generic XLSX warning should allow draft creation");
-    True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "missing_subject"), "generic XLSX missing-subject reason");
-    True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "missing_body"), "generic XLSX missing-body reason");
+    Equal(ValidationState.Blocked, batch.Messages[0].Validation.State, "generic XLSX validation state");
+    True(!batch.Messages[0].Validation.CanCreate, "generic XLSX missing content should block draft creation");
+    True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "missing_subject" && issue.Severity == ValidationIssueSeverity.Blocking), "generic XLSX missing-subject blocker");
+    True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "missing_body" && issue.Severity == ValidationIssueSeverity.Blocking), "generic XLSX missing-body blocker");
     True(batch.Messages[0].Validation.Issues.All(issue => issue.Code is not "review_not_approved" and not "missing_content_hash" and not "missing_personalization_source"), "default-pass rules should not warn");
     File.Delete(path);
 }

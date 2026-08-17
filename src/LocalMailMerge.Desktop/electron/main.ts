@@ -178,7 +178,8 @@ function createWindow(): void {
   mainWindow.on('unmaximize', publishMaximizedState);
 
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
-  const settingsCapture = ['settings', 'templates', 'signatures', 'outlook', 'safety', 'validation-rules', 'appearance'].includes(captureState);
+  const settingsCloseActiveCapture = captureState === 'appearance-close-active';
+  const settingsCapture = ['settings', 'templates', 'signatures', 'outlook', 'safety', 'validation-rules', 'appearance', 'appearance-close-active'].includes(captureState);
   const importCapture = captureState === 'import';
   const realImportCapture = captureState === 'real-import';
   const warningCapture = captureState === 'warning';
@@ -196,7 +197,7 @@ function createWindow(): void {
   const creationResultCapture = captureState === 'creation-result';
   const settingsCaptureValue = captureState === 'outlook'
     ? 'outlook'
-    : captureState === 'appearance' || captureState === 'settings'
+    : captureState === 'appearance' || captureState === 'appearance-close-active' || captureState === 'settings'
     ? 'appearance'
     : captureState === 'safety' || captureState === 'validation-rules'
     ? 'safety'
@@ -371,6 +372,18 @@ function createWindow(): void {
         `);
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
+      if (settingsCloseActiveCapture) {
+        const closeRect = await mainWindow!.webContents.executeJavaScript(`
+          (() => {
+            const rect = document.querySelector('.settings-dialog-close')?.getBoundingClientRect();
+            return rect ? { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) } : null;
+          })()
+        `) as { x: number; y: number } | null;
+        if (!closeRect) throw new Error('设置页关闭按钮不存在。');
+        mainWindow!.webContents.sendInputEvent({ type: 'mouseMove', x: closeRect.x, y: closeRect.y });
+        mainWindow!.webContents.sendInputEvent({ type: 'mouseDown', x: closeRect.x, y: closeRect.y, button: 'left', clickCount: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
       const image = await mainWindow!.webContents.capturePage();
       fs.mkdirSync(path.dirname(capturePath), { recursive: true });
       fs.writeFileSync(capturePath, image.toPNG());
@@ -391,8 +404,11 @@ function createWindow(): void {
               threeZonesVisible: document.querySelectorAll('.validation-rule-zone').length === 3,
               invalidEmailLocked: document.querySelector('[data-rule-id="invalid_email"]')?.getAttribute('data-rule-fixed') === 'true',
               duplicateStartsBlocked: Boolean(document.querySelector('[data-rule-zone="blocking"] [data-rule-id="already_created"]')),
-              warningDefaultsVisible: ['missing_subject', 'missing_body', 'unresolved_placeholder', 'duplicate_email'].every((id) => document.querySelector('[data-rule-zone="warning"] [data-rule-id="' + id + '"]')),
+              blockingDefaultsVisible: ['missing_subject', 'missing_body'].every((id) => document.querySelector('[data-rule-zone="blocking"] [data-rule-id="' + id + '"]')),
+              warningDefaultsVisible: ['unresolved_placeholder', 'duplicate_email'].every((id) => document.querySelector('[data-rule-zone="warning"] [data-rule-id="' + id + '"]')),
               passDefaultsVisible: ['review_not_approved', 'missing_personalization_source', 'content_hash_mismatch'].every((id) => document.querySelector('[data-rule-zone="pass"] [data-rule-id="' + id + '"]')),
+              defaultOrderVisible: [...document.querySelectorAll('[data-rule-zone="blocking"] [data-rule-id]')]
+                .map((item) => item.getAttribute('data-rule-id')).join(',') === 'invalid_email,already_created,missing_subject,missing_body',
               passZoneUsesCreatableLabel: document.querySelector('[data-rule-zone="pass"] [data-slot="card-title"]')?.textContent?.includes('可创建') === true,
               renamedRulesVisible: ['邮箱无效', '重复创建', '占位符残留', '邮箱重复'].every((label) => document.querySelector('.settings-dialog')?.textContent?.includes(label)),
               tagsUseNovaButtons: [...document.querySelectorAll('.validation-rule-tag')].every((item) => ['BUTTON', 'SPAN'].includes(item.tagName) && item.getAttribute('data-size') === 'sm' && item.getAttribute('data-variant') === 'glass'),
@@ -418,14 +434,14 @@ function createWindow(): void {
             checks.tooltipExplainsRule = [...document.querySelectorAll('[data-slot="tooltip-content"]')]
               .some((item) => item.textContent?.includes('邮件没有填写主题。'));
             dragButton?.blur();
-            const targetZone = document.querySelector('[data-rule-zone="blocking"]');
+            const targetRule = document.querySelector('[data-rule-id="invalid_email"]');
             const dragRect = dragButton?.getBoundingClientRect();
-            const targetRect = targetZone?.getBoundingClientRect();
+            const targetRect = targetRule?.getBoundingClientRect();
             const coordinates = dragRect && targetRect ? {
               startX: Math.round(dragRect.left + dragRect.width / 2),
               startY: Math.round(dragRect.top + dragRect.height / 2),
-              endX: Math.round(targetRect.left + targetRect.width / 2),
-              endY: Math.round(targetRect.bottom - 28)
+              endX: Math.round(targetRect.left + 2),
+              endY: Math.round(targetRect.top + targetRect.height / 2)
             } : null;
             return { checks, coordinates };
           })()
@@ -447,31 +463,95 @@ function createWindow(): void {
           await new Promise((resolve) => setTimeout(resolve, 250));
         }
 
+        const crossZoneCoordinates = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const readyDeadline = performance.now() + 2000;
+            let dragButton = document.querySelector('button[aria-label="拖动“占位符残留”"]');
+            while (dragButton?.disabled && performance.now() < readyDeadline) {
+              await wait(40);
+              dragButton = document.querySelector('button[aria-label="拖动“占位符残留”"]');
+            }
+            const targetRule = document.querySelector('[data-rule-id="missing_body"]');
+            const dragRect = dragButton?.getBoundingClientRect();
+            const targetRect = targetRule?.getBoundingClientRect();
+            return dragRect && targetRect ? {
+              startX: Math.round(dragRect.left + dragRect.width / 2),
+              startY: Math.round(dragRect.top + dragRect.height / 2),
+              endX: Math.round(targetRect.right - 2),
+              endY: Math.round(targetRect.top + targetRect.height / 2)
+            } : null;
+          })()
+        `) as { startX: number; startY: number; endX: number; endY: number } | null;
+        if (crossZoneCoordinates) {
+          const { startX, startY, endX, endY } = crossZoneCoordinates;
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseMove', x: startX, y: startY });
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseDown', x: startX, y: startY, button: 'left', clickCount: 1 });
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseMove', x: startX + 12, y: startY + 12, movementX: 12, movementY: 12 });
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseMove', x: Math.round((startX + endX) / 2), y: Math.round((startY + endY) / 2), movementX: Math.round((endX - startX) / 2), movementY: Math.round((endY - startY) / 2) });
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseMove', x: endX, y: endY, movementX: Math.round((endX - startX) / 2), movementY: Math.round((endY - startY) / 2) });
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          mainWindow!.webContents.sendInputEvent({ type: 'mouseUp', x: endX, y: endY, button: 'left', clickCount: 1 });
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+
         const interaction = await mainWindow!.webContents.executeJavaScript(`
           (async () => {
             const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const blockingOrder = [...document.querySelectorAll('[data-rule-zone="blocking"] [data-rule-id]')]
+              .map((item) => item.getAttribute('data-rule-id'));
             const checks = {
-              dragMoveWorks: Boolean(document.querySelector('[data-rule-zone="blocking"] [data-rule-id="missing_subject"]')),
+              sameZoneOrderWorks: blockingOrder.indexOf('missing_subject') < blockingOrder.indexOf('invalid_email'),
+              dragMoveWorks: Boolean(document.querySelector('[data-rule-zone="blocking"] [data-rule-id="unresolved_placeholder"]')),
               dragMoveHasNoToast: !document.querySelector('[data-sonner-toast]'),
               policyPersisted: false,
+              previewOrderFollowsPolicy: false,
               resetRestoresDefaults: false,
               resetPersisted: false
             };
             const saved = await window.desktopApi.getValidationPolicy();
-            checks.policyPersisted = saved.rules.already_created === 'blocking' && saved.rules.missing_subject === 'blocking' && saved.rules.invalid_email === 'blocking';
+            checks.policyPersisted = saved.rules.missing_subject === 'blocking' && saved.rules.missing_body === 'blocking' &&
+              saved.rules.unresolved_placeholder === 'blocking' && saved.rules.invalid_email === 'blocking' &&
+              saved.order.indexOf('missing_subject') < saved.order.indexOf('invalid_email') &&
+              saved.order.indexOf('unresolved_placeholder') > saved.order.indexOf('missing_body');
+            document.querySelector('[aria-label="关闭设置"]')?.click();
+            const closeDeadline = performance.now() + 1000;
+            while (document.querySelector('.settings-dialog') && performance.now() < closeDeadline) await wait(30);
+            const invalidRow = [...document.querySelectorAll('[data-slot="table-row"]')]
+              .find((row) => row.textContent?.includes('Jessica Taylor'));
+            invalidRow?.click();
+            await wait(120);
+            const alertTitles = [...document.querySelectorAll('.validation-issue-card [data-slot="alert-title"]')]
+              .map((item) => item.textContent?.trim());
+            checks.previewOrderFollowsPolicy = alertTitles[0] === '主题为空' && alertTitles[1] === '邮箱无效';
+            document.querySelector('button[aria-label="设置"]')?.click();
+            const settingsDeadline = performance.now() + 1000;
+            while (!document.querySelector('[data-settings-tab="safety"]') && performance.now() < settingsDeadline) await wait(30);
+            document.querySelector('[data-settings-tab="safety"]')?.click();
+            const safetyDeadline = performance.now() + 1000;
+            while (!document.querySelector('[data-testid="reset-validation-rules"]') && performance.now() < safetyDeadline) await wait(30);
             document.querySelector('[data-testid="reset-validation-rules"]')?.click();
             const resetDeadline = performance.now() + 2000;
-            while (!document.querySelector('[data-rule-zone="warning"] [data-rule-id="missing_subject"]') && performance.now() < resetDeadline) await wait(40);
+            while (!document.querySelector('[data-rule-zone="warning"] [data-rule-id="unresolved_placeholder"]') && performance.now() < resetDeadline) await wait(40);
             checks.resetRestoresDefaults = Boolean(
               document.querySelector('[data-rule-zone="blocking"] [data-rule-id="already_created"]') &&
-              document.querySelector('[data-rule-zone="warning"] [data-rule-id="missing_subject"]') &&
+              document.querySelector('[data-rule-zone="blocking"] [data-rule-id="missing_subject"]') &&
+              document.querySelector('[data-rule-zone="blocking"] [data-rule-id="missing_body"]') &&
+              document.querySelector('[data-rule-zone="warning"] [data-rule-id="unresolved_placeholder"]') &&
               document.querySelector('[data-rule-zone="pass"] [data-rule-id="review_not_approved"]')
             );
             const resetSaved = await window.desktopApi.getValidationPolicy();
             checks.resetPersisted = resetSaved.rules.already_created === 'blocking' &&
-              resetSaved.rules.missing_subject === 'warning' &&
+              resetSaved.rules.missing_subject === 'blocking' &&
+              resetSaved.rules.missing_body === 'blocking' &&
+              resetSaved.rules.unresolved_placeholder === 'warning' &&
               resetSaved.rules.review_not_approved === 'pass' &&
-              resetSaved.rules.invalid_email === 'blocking';
+              resetSaved.rules.invalid_email === 'blocking' &&
+              resetSaved.order.indexOf('invalid_email') < resetSaved.order.indexOf('missing_subject');
             return checks;
           })()
         `) as Record<string, boolean>;

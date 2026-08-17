@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
+  closestCenter,
   DndContext,
   KeyboardSensor,
   PointerSensor,
@@ -24,7 +25,7 @@ import {
   CardHeader,
   CardTitle
 } from '@/components/ui/card';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { ValidationPolicyState, ValidationRuleId, ValidationRuleLevel } from './types';
 import {
@@ -60,7 +61,7 @@ export function ValidationRulesEditor({
   onMoveRule
 }: {
   policy: ValidationPolicyState;
-  onMoveRule: (ruleId: ValidationRuleId, level: ValidationRuleLevel) => Promise<void>;
+  onMoveRule: (ruleId: ValidationRuleId, level: ValidationRuleLevel, targetRuleId?: ValidationRuleId, edge?: 'before' | 'after') => Promise<void>;
 }) {
   const [busyRuleId, setBusyRuleId] = useState<ValidationRuleId | null>(null);
   const sensors = useSensors(
@@ -68,12 +69,17 @@ export function ValidationRulesEditor({
     useSensor(KeyboardSensor)
   );
 
-  async function moveRule(ruleId: ValidationRuleId, level: ValidationRuleLevel) {
+  async function moveRule(
+    ruleId: ValidationRuleId,
+    level: ValidationRuleLevel,
+    targetRuleId?: ValidationRuleId,
+    edge?: 'before' | 'after'
+  ) {
     const rule = validationRuleDefinitions.find((item) => item.id === ruleId);
-    if (!rule || rule.fixed || policy.rules[ruleId] === level || busyRuleId) return;
+    if (!rule || rule.fixed || targetRuleId === ruleId || busyRuleId) return;
     setBusyRuleId(ruleId);
     try {
-      await onMoveRule(ruleId, level);
+      await onMoveRule(ruleId, level, targetRuleId, edge);
     } finally {
       setBusyRuleId(null);
     }
@@ -81,22 +87,32 @@ export function ValidationRulesEditor({
 
   function handleDragEnd(event: DragEndEvent) {
     const ruleId = event.active.id as ValidationRuleId;
-    const level = event.over?.id as ValidationRuleLevel | undefined;
-    if (level === 'blocking' || level === 'warning' || level === 'pass') {
-      void moveRule(ruleId, level);
+    const dropData = event.over?.data.current as { type?: 'zone' | 'rule'; level?: ValidationRuleLevel; ruleId?: ValidationRuleId } | undefined;
+    if (!dropData?.level) return;
+    if (dropData.type === 'zone') {
+      void moveRule(ruleId, dropData.level);
+      return;
     }
+    if (dropData.type !== 'rule' || !dropData.ruleId || dropData.ruleId === ruleId || !event.over) return;
+    const activeRect = event.active.rect.current.translated;
+    const overRect = event.over.rect;
+    const activeCenterX = activeRect ? activeRect.left + activeRect.width / 2 : overRect.left;
+    const activeCenterY = activeRect ? activeRect.top + activeRect.height / 2 : overRect.top;
+    const overCenterX = overRect.left + overRect.width / 2;
+    const overCenterY = overRect.top + overRect.height / 2;
+    const onDifferentRow = Math.abs(activeCenterY - overCenterY) > overRect.height / 2;
+    const edge = (onDifferentRow ? activeCenterY > overCenterY : activeCenterX > overCenterX) ? 'after' : 'before';
+    void moveRule(ruleId, dropData.level, dropData.ruleId, edge);
   }
 
   return (
-    <TooltipProvider delayDuration={260}>
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="validation-rules-grid">
-          <RuleZone level="blocking" policy={policy} busyRuleId={busyRuleId} />
-          <RuleZone level="warning" policy={policy} busyRuleId={busyRuleId} />
-        </div>
-        <RuleZone level="pass" policy={policy} busyRuleId={busyRuleId} />
-      </DndContext>
-    </TooltipProvider>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <div className="validation-rules-grid">
+        <RuleZone level="blocking" policy={policy} busyRuleId={busyRuleId} />
+        <RuleZone level="warning" policy={policy} busyRuleId={busyRuleId} />
+      </div>
+      <RuleZone level="pass" policy={policy} busyRuleId={busyRuleId} />
+    </DndContext>
   );
 }
 
@@ -109,8 +125,10 @@ function RuleZone({
   policy: ValidationPolicyState;
   busyRuleId: ValidationRuleId | null;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: level });
-  const items = validationRuleDefinitions.filter((rule) => policy.rules[rule.id] === level);
+  const { setNodeRef, isOver } = useDroppable({ id: level, data: { type: 'zone', level } });
+  const items = policy.order
+    .map((ruleId) => validationRuleDefinitions.find((rule) => rule.id === ruleId))
+    .filter((rule): rule is ValidationRuleDefinition => rule !== undefined && policy.rules[rule.id] === level);
   const meta = levelMeta[level];
   const Icon = meta.icon;
 
@@ -134,6 +152,7 @@ function RuleZone({
             <RuleTag
               key={rule.id}
               rule={rule}
+              level={level}
               busy={busyRuleId === rule.id}
               disabled={busyRuleId !== null}
             />
@@ -147,17 +166,27 @@ function RuleZone({
 
 function RuleTag({
   rule,
+  level,
   busy,
   disabled
 }: {
   rule: ValidationRuleDefinition;
+  level: ValidationRuleLevel;
   busy: boolean;
   disabled: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef: setDraggableRef, transform, isDragging } = useDraggable({
     id: rule.id,
     disabled: rule.fixed || disabled
   });
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
+    id: `rule:${rule.id}`,
+    data: { type: 'rule', level, ruleId: rule.id }
+  });
+  const setNodeRef = useCallback((node: HTMLDivElement | null) => {
+    setDraggableRef(node);
+    setDroppableRef(node);
+  }, [setDraggableRef, setDroppableRef]);
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
@@ -166,7 +195,7 @@ function RuleTag({
     <div
       ref={setNodeRef}
       style={style}
-      className={cn('validation-rule-tag-wrap', isDragging && 'is-dragging', busy && 'is-saving')}
+      className={cn('validation-rule-tag-wrap', isDragging && 'is-dragging', isOver && !isDragging && 'is-drop-target', busy && 'is-saving')}
       data-rule-id={rule.id}
       data-rule-fixed={rule.fixed ? 'true' : undefined}
     >

@@ -26,8 +26,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Toaster } from '@/components/ui/sonner';
+import { HintTooltip } from '@/components/HintTooltip';
 import { toast } from 'sonner';
-import { demoBatch } from './demoData';
+import { applyValidationPolicyToDemoBatch, demoBatch } from './demoData';
 import { DraftCreationResultDialog } from './DraftCreationResultDialog';
 import { ExcelImportDialog } from './ExcelImportDialog';
 import { SettingsDialog, type SettingsTab } from './SettingsDialog';
@@ -35,7 +36,7 @@ import { isSettingsTab } from './settingsNavigation';
 import { applyAppearanceSettings, defaultAppearanceSettings } from './appearanceSettings';
 import { ColumnFilterMenu, ReviewBadge, ValidationBadge } from './features/mail-merge/MailMergeControls';
 import { MailMergeWorkspace, type StatusMode } from './features/mail-merge/MailMergeWorkspace';
-import { validationLevelLabels } from './validationRules';
+import { defaultValidationPolicy, moveValidationRuleInPolicy, validationLevelLabels } from './validationRules';
 import type {
   BatchViewModel,
   AppearanceSettingsState,
@@ -68,20 +69,7 @@ const previewTemplateState: TemplateState = {
   selectedTemplateId: 'bundled:company_signature.sample.html'
 };
 
-const defaultValidationPolicy: ValidationPolicyState = {
-  version: 1,
-  rules: {
-    invalid_email: 'blocking',
-    already_created: 'blocking',
-    missing_subject: 'warning',
-    missing_body: 'warning',
-    unresolved_placeholder: 'warning',
-    duplicate_email: 'warning',
-    review_not_approved: 'pass',
-    missing_personalization_source: 'pass',
-    content_hash_mismatch: 'pass'
-  }
-};
+const initialDemoBatch = applyValidationPolicyToDemoBatch(defaultValidationPolicy);
 
 const previewXlsxInspection: XlsxWorkbookInspection = {
   recommendedWorksheetName: 'Talent List',
@@ -122,7 +110,7 @@ interface CreationResultState {
 }
 
 export function App() {
-  const [batch, setBatch] = useState<BatchViewModel>(demoBatch);
+  const [batch, setBatch] = useState<BatchViewModel>(initialDemoBatch);
   const [accounts, setAccounts] = useState<OutlookAccount[]>(() => window.desktopApi ? [] : [fallbackAccount]);
   const [selectedAccountId, setSelectedAccountId] = useState(() => window.desktopApi ? '' : fallbackAccount.storeId);
   const [accountsLoading, setAccountsLoading] = useState(Boolean(window.desktopApi));
@@ -134,13 +122,13 @@ export function App() {
   const [debouncedGlobalFilter, setDebouncedGlobalFilter] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>(() => Object.fromEntries(
-    demoBatch.records.filter((record) => record.initiallySelected).map((record) => [record.id, true])
+    initialDemoBatch.records.filter((record) => record.initiallySelected).map((record) => [record.id, true])
   ));
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => Object.fromEntries(
-    demoBatch.fields.map((field) => [field.key, field.defaultVisible])
+    initialDemoBatch.fields.map((field) => [field.key, field.defaultVisible])
   ));
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => ['__select', ...demoBatch.fields.map((field) => field.key)]);
-  const [activeRecordId, setActiveRecordId] = useState(demoBatch.records[0]?.id ?? '');
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(() => ['__select', ...initialDemoBatch.fields.map((field) => field.key)]);
+  const [activeRecordId, setActiveRecordId] = useState(initialDemoBatch.records[0]?.id ?? '');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null);
@@ -175,7 +163,10 @@ export function App() {
       })
       .catch((error) => toast.error(safeMessage(error)));
     window.desktopApi.getValidationPolicy()
-      .then(setValidationPolicy)
+      .then((policy) => {
+        setValidationPolicy(policy);
+        resetForBatch(applyValidationPolicyToDemoBatch(policy));
+      })
       .catch((error) => toast.error(safeMessage(error)));
     window.desktopApi.getAppearanceSettings()
       .then(setAppearanceSettings)
@@ -304,10 +295,12 @@ export function App() {
           const activeFilter = column.getFilterValue() as string[] | undefined;
           return (
             <div className="column-heading">
-              <Button type="button" variant="ghost" size="sm" className="column-sort" onClick={column.getToggleSortingHandler()} title={`按${field.label}排序`}>
-                <span>{field.label}</span>
-                {column.getIsSorted() ? <ArrowUpDown data-icon="inline-end" aria-label="已排序" /> : null}
-              </Button>
+              <HintTooltip content={`按${field.label}排序`}>
+                <Button type="button" variant="ghost" size="sm" className="column-sort" onClick={column.getToggleSortingHandler()}>
+                  <span>{field.label}</span>
+                  {column.getIsSorted() ? <ArrowUpDown data-icon="inline-end" aria-label="已排序" /> : null}
+                </Button>
+              </HintTooltip>
               <ColumnFilterMenu
                 fieldKey={field.key}
                 label={field.label}
@@ -322,7 +315,7 @@ export function App() {
         cell: ({ row, getValue }) => {
           if (field.key === 'review_status') return <ReviewBadge value={String(getValue())} />;
           if (field.key === '__validation' || field.key === '__validation_result' || field.label === '校验结果') return <ValidationBadge record={row.original} />;
-          return <span className="cell-text" title={String(getValue())}>{String(getValue())}</span>;
+          return <HintTooltip content={String(getValue())}><span className="cell-text">{String(getValue())}</span></HintTooltip>;
         }
       };
     });
@@ -435,6 +428,7 @@ export function App() {
   async function applyValidationPolicy(nextPolicy: ValidationPolicyState) {
     if (!window.desktopApi) {
       setValidationPolicy(nextPolicy);
+      resetForBatch(applyValidationPolicyToDemoBatch(nextPolicy));
       return;
     }
 
@@ -454,14 +448,18 @@ export function App() {
       setActiveRecordId((current) => refreshed.records.some((record) => record.id === current)
         ? current
         : refreshed.records[0]?.id ?? '');
+    } else {
+      resetForBatch(applyValidationPolicyToDemoBatch(saved));
     }
   }
 
-  async function moveValidationRule(ruleId: ValidationRuleId, level: ValidationRuleLevel) {
-    const nextPolicy: ValidationPolicyState = {
-      version: 1,
-      rules: { ...validationPolicy.rules, [ruleId]: level }
-    };
+  async function moveValidationRule(
+    ruleId: ValidationRuleId,
+    level: ValidationRuleLevel,
+    targetRuleId?: ValidationRuleId,
+    edge?: 'before' | 'after'
+  ) {
+    const nextPolicy = moveValidationRuleInPolicy(validationPolicy, ruleId, level, targetRuleId, edge);
     try {
       await applyValidationPolicy(nextPolicy);
     } catch (error) {
@@ -472,7 +470,8 @@ export function App() {
   async function resetValidationPolicy() {
     const nextPolicy: ValidationPolicyState = {
       version: 1,
-      rules: { ...defaultValidationPolicy.rules }
+      rules: { ...defaultValidationPolicy.rules },
+      order: [...defaultValidationPolicy.order]
     };
     try {
       await applyValidationPolicy(nextPolicy);
@@ -657,6 +656,7 @@ export function App() {
         fieldManagerDefaultOpen={fieldMenuState}
         statusMenuDefaultOpen={statusMenuState}
         selectedRowState={selectedRowState}
+        validationRuleOrder={validationPolicy.order}
         referenceVisibleCount={referenceState ? aggregate.visible : undefined}
       />
 

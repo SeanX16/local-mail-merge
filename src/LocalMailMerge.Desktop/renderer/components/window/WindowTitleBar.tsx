@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MailPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HintTooltip } from '@/components/HintTooltip';
 
 export function WindowTitleBar() {
   const [maximized, setMaximized] = useState(false);
@@ -27,22 +28,27 @@ export function WindowTitleBar() {
         <span>Local Mail Merge</span>
       </div>
       <div className="window-controls" role="group" aria-label="窗口控制">
-        <Button variant="ghost" size="icon" className="window-control" aria-label="最小化窗口" title="最小化" onClick={minimize}>
-          <span className="window-control-glyph" aria-hidden="true">{'\uE921'}</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="window-control"
-          aria-label={maximized ? '还原窗口' : '最大化窗口'}
-          title={maximized ? '还原' : '最大化'}
-          onClick={toggleMaximize}
-        >
-          <span className="window-control-glyph" aria-hidden="true">{maximized ? '\uE923' : '\uE922'}</span>
-        </Button>
-        <Button variant="ghost" size="icon" className="window-control window-control--close" aria-label="关闭窗口" title="关闭" onClick={close}>
-          <span className="window-control-glyph" aria-hidden="true">{'\uE8BB'}</span>
-        </Button>
+        <HintTooltip content="最小化" side="bottom">
+          <Button variant="ghost" size="icon" className="window-control" aria-label="最小化窗口" onClick={minimize}>
+            <span className="window-control-glyph" aria-hidden="true">{'\uE921'}</span>
+          </Button>
+        </HintTooltip>
+        <HintTooltip content={maximized ? '还原' : '最大化'} side="bottom">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="window-control"
+            aria-label={maximized ? '还原窗口' : '最大化窗口'}
+            onClick={toggleMaximize}
+          >
+            <span className="window-control-glyph" aria-hidden="true">{maximized ? '\uE923' : '\uE922'}</span>
+          </Button>
+        </HintTooltip>
+        <HintTooltip content="关闭" side="bottom">
+          <Button variant="ghost" size="icon" className="window-control window-control--close" aria-label="关闭窗口" onClick={close}>
+            <span className="window-control-glyph" aria-hidden="true">{'\uE8BB'}</span>
+          </Button>
+        </HintTooltip>
       </div>
     </header>
   );

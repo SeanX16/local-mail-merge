@@ -179,15 +179,15 @@ body { font-size: 13px; line-height: 1.45; }
 .titlebar-logo svg { width: 17px; height: 17px; }
 .window-controls { align-self: stretch; display: flex; align-items: stretch; -webkit-app-region: no-drag; }
 .window-control {
-  width: 46px; height: 100%; border: 0; border-radius: 0; color: var(--foreground); transform: none !important;
+  width: 46px; height: 100%; border: 0; border-radius: 0; color: var(--foreground); transform: none !important; translate: none !important;
 }
 .window-control-glyph {
   font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; font-size: 10px; font-weight: 400; line-height: 1;
 }
 .window-control:hover { background: color-mix(in oklch, var(--muted) 82%, var(--foreground) 6%); }
 .window-control:active { background: color-mix(in oklch, var(--muted) 72%, var(--foreground) 12%); }
-.window-control--close:hover { background: var(--destructive); color: var(--primary-foreground); }
-.window-control--close:active { background: color-mix(in oklch, var(--destructive) 84%, var(--foreground)); color: var(--primary-foreground); }
+.window-control--close:hover { background: var(--destructive) !important; color: var(--primary-foreground) !important; }
+.window-control--close:active { background: color-mix(in oklch, var(--destructive) 84%, var(--foreground)) !important; color: var(--primary-foreground) !important; }
 
 .app-main { min-height: 0; display: grid; grid-template-rows: var(--commandbar-height) var(--summary-height) minmax(0, 1fr) var(--footer-height); }
 .command-bar {
@@ -366,6 +366,9 @@ body { font-size: 13px; line-height: 1.45; }
 .creation-result-footer { margin-top: 0; }
 
 .settings-dialog { width: min(880px, calc(100vw - 48px)); max-width: 880px !important; height: min(610px, calc(100vh - 48px)); grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; padding: 0; overflow: hidden; }
+.settings-dialog-close { position: absolute; top: -1px; right: -1px; z-index: 2; width: 47px; height: 33px; padding: 0; border: 0; border-radius: 0; background-clip: border-box; color: var(--foreground); transform: none !important; translate: none !important; }
+.settings-dialog-close:hover { background: var(--destructive) !important; color: var(--primary-foreground) !important; }
+.settings-dialog-close:active { background: color-mix(in oklch, var(--destructive) 84%, var(--foreground)) !important; color: var(--primary-foreground) !important; }
 .settings-header { padding: 17px 20px 13px; border-bottom: 1px solid var(--border); }
 .settings-header [data-slot="dialog-title"] { font-size: 16px; font-weight: 650; }
 .settings-header [data-slot="dialog-description"] { font-size: 12px; }
@@ -418,6 +421,7 @@ body { font-size: 13px; line-height: 1.45; }
 .validation-rule-list { min-height: 44px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px; }
 .validation-rule-tag-wrap { position: relative; display: inline-flex; align-items: center; touch-action: none; }
 .validation-rule-tag-wrap.is-dragging { z-index: 4; opacity: .78; filter: drop-shadow(0 6px 10px color-mix(in oklch, var(--foreground) 16%, transparent)); }
+.validation-rule-tag-wrap.is-drop-target { outline: 2px solid color-mix(in oklch, var(--primary) 48%, transparent); outline-offset: 2px; border-radius: var(--radius-sm); }
 .validation-rule-tag-wrap.is-saving { opacity: .62; }
 .validation-rule-tag-wrap button.validation-rule-tag { cursor: grab; }
 .validation-rule-tag-wrap button.validation-rule-tag:active { cursor: grabbing; }

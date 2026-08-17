@@ -33,6 +33,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
+import { HintTooltip } from '@/components/HintTooltip';
 import {
   Table,
   TableBody,
@@ -47,7 +48,8 @@ import type {
   BatchViewModel,
   MailRecord,
   OutlookAccount,
-  TemplateState
+  TemplateState,
+  ValidationRuleId
 } from '../../types';
 import { DEFAULT_SETTINGS_TAB, type SettingsTab } from '../../settingsNavigation';
 import { getValidationRuleText, validationLevelLabels } from '../../validationRules';
@@ -93,15 +95,26 @@ export interface WorkspaceAggregate {
 
 const TABLE_ROW_HEIGHT = 32;
 
-const MailPreview = memo(function MailPreview({ activeRecord }: { activeRecord: MailRecord | undefined }) {
+const MailPreview = memo(function MailPreview({
+  activeRecord,
+  validationRuleOrder
+}: {
+  activeRecord: MailRecord | undefined;
+  validationRuleOrder: ValidationRuleId[];
+}) {
   const sanitizedBody = useMemo(() => activeRecord ? bodyMarkup(activeRecord) : '', [activeRecord]);
-  const activeValidationIssues = useMemo(() => activeRecord
-    ? activeRecord.validationIssues
+  const activeValidationIssues = useMemo(() => {
+    if (!activeRecord) return [];
+    const issues = activeRecord.validationIssues
       ?? activeRecord.validationDetail.split(/\r?\n/)
         .map((line) => line.replace(/^\s*•\s*/, '').trim())
         .filter(Boolean)
-        .map((message) => ({ message, severity: activeRecord.canCreate ? 'warning' as const : 'blocking' as const, code: 'detail' }))
-    : [], [activeRecord]);
+        .map((message) => ({ message, severity: activeRecord.canCreate ? 'warning' as const : 'blocking' as const, code: 'detail' }));
+    const orderIndex = new Map(validationRuleOrder.map((ruleId, index) => [ruleId, index]));
+    return [...issues].sort((left, right) =>
+      (orderIndex.get(left.code as ValidationRuleId) ?? Number.MAX_SAFE_INTEGER)
+      - (orderIndex.get(right.code as ValidationRuleId) ?? Number.MAX_SAFE_INTEGER));
+  }, [activeRecord, validationRuleOrder]);
 
   return (
     <aside className="preview-pane">
@@ -360,6 +373,7 @@ export function MailMergeWorkspace({
   fieldManagerDefaultOpen,
   statusMenuDefaultOpen,
   selectedRowState,
+  validationRuleOrder,
   referenceVisibleCount
 }: {
   batch: BatchViewModel;
@@ -392,6 +406,7 @@ export function MailMergeWorkspace({
   fieldManagerDefaultOpen: boolean;
   statusMenuDefaultOpen: boolean;
   selectedRowState: boolean;
+  validationRuleOrder: ValidationRuleId[];
   referenceVisibleCount?: number;
 }) {
   const [fieldManagerOpen, setFieldManagerOpen] = useState(fieldManagerDefaultOpen);
@@ -412,10 +427,12 @@ export function MailMergeWorkspace({
             <FolderOpen data-icon="inline-start" />
             导入交接包
           </Button>
-          <div className="path-box" title={batch.sourcePath}>
-            <FileSpreadsheet aria-hidden="true" />
-            <MiddleEllipsisPath value={batch.sourcePath} />
-          </div>
+          <HintTooltip content={batch.sourcePath} side="bottom">
+            <div className="path-box">
+              <FileSpreadsheet aria-hidden="true" />
+              <MiddleEllipsisPath value={batch.sourcePath} />
+            </div>
+          </HintTooltip>
           <div className="command-field account-field">
             <span className="command-label">Outlook 账户</span>
             <CommandDropdown
@@ -505,7 +522,7 @@ export function MailMergeWorkspace({
             <VirtualizedMailTable table={table} activeRecordId={selectedRowState ? table.getRowModel().rows[1]?.original.id : activeRecord?.id} onActivateRecord={onActivateRecord} />
           </div>
 
-          <MailPreview activeRecord={activeRecord} />
+          <MailPreview activeRecord={activeRecord} validationRuleOrder={validationRuleOrder} />
         </section>
 
         <footer className="footer-bar">

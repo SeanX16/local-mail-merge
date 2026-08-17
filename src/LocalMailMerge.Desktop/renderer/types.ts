@@ -97,6 +97,7 @@ export type ValidationRuleLevel = 'blocking' | 'warning' | 'pass';
 export interface ValidationPolicyState {
   version: 1;
   rules: Record<ValidationRuleId, ValidationRuleLevel>;
+  order: ValidationRuleId[];
 }
 
 export type AppFontId = 'noto-sans-sc' | 'segoe-ui' | 'microsoft-yahei' | 'pingfang-bold';

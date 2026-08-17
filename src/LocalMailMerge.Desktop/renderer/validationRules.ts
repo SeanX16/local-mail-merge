@@ -1,4 +1,4 @@
-import type { ValidationRuleId, ValidationRuleLevel } from './types';
+import type { ValidationPolicyState, ValidationRuleId, ValidationRuleLevel } from './types';
 
 export interface ValidationRuleDefinition {
   id: ValidationRuleId;
@@ -48,7 +48,7 @@ export const validationRuleDefinitions: ValidationRuleDefinition[] = [
   {
     id: 'review_not_approved',
     name: '尚未批准',
-    description: '审核状态为空或不是 Approved／已批准／批准。'
+    description: '审核状态为空或不是 Approved / 已批准 / 批准。'
   },
   {
     id: 'missing_personalization_source',
@@ -61,6 +61,48 @@ export const validationRuleDefinitions: ValidationRuleDefinition[] = [
     description: '仅在交接包提供内容哈希时检查邮箱、主题或正文变化。'
   }
 ];
+
+export const defaultValidationRuleOrder = validationRuleDefinitions.map((rule) => rule.id);
+
+export const defaultValidationPolicy: ValidationPolicyState = {
+  version: 1,
+  rules: {
+    invalid_email: 'blocking',
+    already_created: 'blocking',
+    missing_subject: 'blocking',
+    missing_body: 'blocking',
+    unresolved_placeholder: 'warning',
+    duplicate_email: 'warning',
+    review_not_approved: 'pass',
+    missing_personalization_source: 'pass',
+    content_hash_mismatch: 'pass'
+  },
+  order: [...defaultValidationRuleOrder]
+};
+
+export function moveValidationRuleInPolicy(
+  policy: ValidationPolicyState,
+  ruleId: ValidationRuleId,
+  level: ValidationRuleLevel,
+  targetRuleId?: ValidationRuleId,
+  edge: 'before' | 'after' = 'after'
+): ValidationPolicyState {
+  const rules = { ...policy.rules, [ruleId]: level };
+  const order = policy.order.filter((id) => id !== ruleId);
+  let insertionIndex = order.length;
+
+  if (targetRuleId && targetRuleId !== ruleId) {
+    const targetIndex = order.indexOf(targetRuleId);
+    if (targetIndex >= 0) insertionIndex = targetIndex + (edge === 'after' ? 1 : 0);
+  } else {
+    let lastRuleInLevel = -1;
+    order.forEach((id, index) => { if (rules[id] === level) lastRuleInLevel = index; });
+    if (lastRuleInLevel >= 0) insertionIndex = lastRuleInLevel + 1;
+  }
+
+  order.splice(insertionIndex, 0, ruleId);
+  return { version: 1, rules, order };
+}
 
 const validationRuleTextByCode = new Map<string, Pick<ValidationRuleDefinition, 'name' | 'description'>>([
   ...validationRuleDefinitions.map((rule) => [rule.id, { name: rule.name, description: rule.description }] as const),
