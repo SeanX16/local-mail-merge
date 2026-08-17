@@ -180,7 +180,7 @@ internal static class Program
         var fields = batch.Fields.Select(field => new
         {
             field.Key,
-            label = field.DisplayName,
+            label = field.Key == ValidationService.ValidationFieldKey ? field.DisplayName : field.Key,
             field.DefaultVisible,
             width = FieldWidth(field.DisplayName)
         }).ToList();
