@@ -229,7 +229,7 @@ export function FieldManager({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="field-button" aria-expanded={open}>
+        <Button variant="outline" size="sm" pressFeedback className="field-button" aria-expanded={open}>
           <SlidersHorizontal data-icon="inline-start" />
           字段
         </Button>
@@ -345,6 +345,7 @@ export function ColumnFilterMenu({
           type="button"
           variant="ghost"
           size="icon-xs"
+          pressFeedback
           className={cn('column-filter-button', appliedValues?.length && 'is-active')}
           data-filter-id={fieldKey}
           aria-label={`筛选${label}`}

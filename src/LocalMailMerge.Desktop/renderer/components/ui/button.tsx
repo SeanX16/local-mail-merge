@@ -35,10 +35,15 @@ const buttonVariants = cva(
           "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
         "icon-lg": "size-9",
       },
+      pressFeedback: {
+        false: null,
+        true: "active:translate-y-px",
+      },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      pressFeedback: false,
     },
   }
 )
@@ -47,6 +52,7 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  pressFeedback = false,
   asChild = false,
   ...props
 }: React.ComponentProps<"button"> &
@@ -60,7 +66,7 @@ function Button({
       data-slot="button"
       data-variant={variant}
       data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size, pressFeedback, className }))}
       {...props}
     />
   )
