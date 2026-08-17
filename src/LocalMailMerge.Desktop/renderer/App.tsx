@@ -31,11 +31,14 @@ import { demoBatch } from './demoData';
 import { DraftCreationResultDialog } from './DraftCreationResultDialog';
 import { ExcelImportDialog } from './ExcelImportDialog';
 import { SettingsDialog, type SettingsTab } from './SettingsDialog';
+import { isSettingsTab } from './settingsNavigation';
+import { applyAppearanceSettings, defaultAppearanceSettings } from './appearanceSettings';
 import { ColumnFilterMenu, ReviewBadge, ValidationBadge } from './features/mail-merge/MailMergeControls';
 import { MailMergeWorkspace, type StatusMode } from './features/mail-merge/MailMergeWorkspace';
 import { validationLevelLabels } from './validationRules';
 import type {
   BatchViewModel,
+  AppearanceSettingsState,
   DraftCreationResponse,
   MailRecord,
   OutlookAccount,
@@ -144,14 +147,13 @@ export function App() {
   const [pendingXlsxImport, setPendingXlsxImport] = useState<{ filePath: string; inspection: XlsxWorkbookInspection } | null>(null);
   const [creationResult, setCreationResult] = useState<CreationResultState | null>(null);
   const [validationPolicy, setValidationPolicy] = useState<ValidationPolicyState>(defaultValidationPolicy);
+  const [appearanceSettings, setAppearanceSettings] = useState<AppearanceSettingsState>(defaultAppearanceSettings);
   const [hasImportedPackage, setHasImportedPackage] = useState(false);
 
   const queryParameters = new URLSearchParams(window.location.search);
   const referenceState = queryParameters.get('referenceState') === '1';
   const settingsStateValue = queryParameters.get('settingsState');
-  const settingsState: SettingsTab | null = settingsStateValue === 'outlook' || settingsStateValue === 'safety'
-    ? settingsStateValue
-    : settingsStateValue ? 'signatures' : null;
+  const settingsState: SettingsTab | null = isSettingsTab(settingsStateValue) ? settingsStateValue : null;
   const importState = queryParameters.get('importState') === '1';
   const warningState = queryParameters.get('warningState') === '1';
   const warningPreviewState = queryParameters.get('warningPreviewState') === '1';
@@ -175,7 +177,14 @@ export function App() {
     window.desktopApi.getValidationPolicy()
       .then(setValidationPolicy)
       .catch((error) => toast.error(safeMessage(error)));
+    window.desktopApi.getAppearanceSettings()
+      .then(setAppearanceSettings)
+      .catch((error) => toast.error(safeMessage(error)));
   }, []);
+
+  useEffect(() => {
+    applyAppearanceSettings(appearanceSettings);
+  }, [appearanceSettings]);
 
   useEffect(() => {
     if (!settingsState) return;
@@ -473,6 +482,20 @@ export function App() {
     }
   }
 
+  async function changeAppearanceSettings(nextSettings: AppearanceSettingsState) {
+    const previousSettings = appearanceSettings;
+    setAppearanceSettings(nextSettings);
+    if (!window.desktopApi) return;
+    try {
+      const saved = await window.desktopApi.saveAppearanceSettings(nextSettings);
+      setAppearanceSettings(saved);
+    } catch (error) {
+      setAppearanceSettings(previousSettings);
+      toast.error(safeMessage(error));
+      throw error;
+    }
+  }
+
   async function chooseTemplate(id: string) {
     if (!id) return;
     if (!window.desktopApi) {
@@ -680,6 +703,8 @@ export function App() {
           validationPolicy={validationPolicy}
           onMoveValidationRule={moveValidationRule}
           onResetValidationPolicy={resetValidationPolicy}
+          appearanceSettings={appearanceSettings}
+          onChangeAppearanceSettings={changeAppearanceSettings}
           onClose={() => setSettingsTab(null)}
         />
       ) : null}

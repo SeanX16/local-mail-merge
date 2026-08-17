@@ -4,13 +4,15 @@ import {
   FolderOpen,
   Loader2,
   Mail,
+  Palette,
   Plus,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
   Signature,
   Trash2,
-  TriangleAlert
+  TriangleAlert,
+  type LucideIcon
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +26,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { FieldDescription, FieldLegend, FieldSet } from '@/components/ui/field';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -40,15 +43,25 @@ import {
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 import type {
+  AppearanceSettingsState,
   OutlookAccount,
   TemplateState,
   ValidationPolicyState,
   ValidationRuleId,
   ValidationRuleLevel
 } from './types';
+import { accentOptions, fontOptions } from './appearanceSettings';
+import { DEFAULT_SETTINGS_TAB, SETTINGS_TABS, type SettingsTab } from './settingsNavigation';
 import { ValidationRulesEditor } from './ValidationRulesEditor';
 
-export type SettingsTab = 'signatures' | 'outlook' | 'safety';
+export type { SettingsTab } from './settingsNavigation';
+
+const settingsTabDetails = {
+  appearance: { label: '外观', icon: Palette },
+  signatures: { label: '邮件签名', icon: Signature },
+  outlook: { label: 'Outlook 账户', icon: Mail },
+  safety: { label: '导入与安全', icon: ShieldCheck }
+} satisfies Record<SettingsTab, { label: string; icon: LucideIcon }>;
 
 const settingsMenuButtonClass = 'data-[active=false]:text-muted-foreground data-[active=false]:[&_svg]:text-muted-foreground data-[active=false]:hover:text-muted-foreground data-[active=false]:hover:[&_svg]:text-muted-foreground data-active:bg-primary/10 data-active:text-foreground data-active:[&_svg]:text-primary data-active:hover:bg-primary/10 data-active:hover:text-foreground data-active:hover:[&_svg]:text-primary';
 
@@ -57,7 +70,7 @@ export function SettingsDialog({
   accounts,
   accountsLoading,
   accountError,
-  initialTab = 'signatures',
+  initialTab = DEFAULT_SETTINGS_TAB,
   onSelectTemplate,
   onImportTemplate,
   onDeleteTemplate,
@@ -66,6 +79,8 @@ export function SettingsDialog({
   validationPolicy,
   onMoveValidationRule,
   onResetValidationPolicy,
+  appearanceSettings,
+  onChangeAppearanceSettings,
   onClose
 }: {
   templateState: TemplateState;
@@ -81,6 +96,8 @@ export function SettingsDialog({
   validationPolicy: ValidationPolicyState;
   onMoveValidationRule: (ruleId: ValidationRuleId, level: ValidationRuleLevel) => Promise<void>;
   onResetValidationPolicy: () => Promise<void>;
+  appearanceSettings: AppearanceSettingsState;
+  onChangeAppearanceSettings: (value: AppearanceSettingsState) => Promise<void>;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
@@ -100,7 +117,7 @@ export function SettingsDialog({
       <DialogContent className="settings-dialog" aria-describedby="settings-description">
         <DialogHeader className="settings-header">
           <DialogTitle>设置</DialogTitle>
-          <DialogDescription id="settings-description">管理邮件签名、Outlook 连接和导入安全规则。</DialogDescription>
+          <DialogDescription id="settings-description">管理应用外观、邮件签名、Outlook 连接和导入安全规则。</DialogDescription>
         </DialogHeader>
 
         <SidebarProvider className="settings-layout" style={{ '--sidebar-width': '196px' } as CSSProperties}>
@@ -110,21 +127,16 @@ export function SettingsDialog({
                 <SidebarGroupLabel>设置分类</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu className="gap-1">
-                    <SidebarMenuItem>
-                      <SidebarMenuButton type="button" size="lg" isActive={tab === 'signatures'} className={settingsMenuButtonClass} data-settings-tab="signatures" onClick={() => setTab('signatures')}>
-                        <Signature /><span>邮件签名</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton type="button" size="lg" isActive={tab === 'outlook'} className={settingsMenuButtonClass} data-settings-tab="outlook" onClick={() => setTab('outlook')}>
-                        <Mail /><span>Outlook 账户</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton type="button" size="lg" isActive={tab === 'safety'} className={settingsMenuButtonClass} data-settings-tab="safety" onClick={() => setTab('safety')}>
-                        <ShieldCheck /><span>导入与安全</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
+                    {SETTINGS_TABS.map((tabId) => {
+                      const { icon: Icon, label } = settingsTabDetails[tabId];
+                      return (
+                        <SidebarMenuItem key={tabId}>
+                          <SidebarMenuButton type="button" size="lg" isActive={tab === tabId} className={settingsMenuButtonClass} data-settings-tab={tabId} onClick={() => setTab(tabId)}>
+                            <Icon /><span>{label}</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
@@ -132,6 +144,60 @@ export function SettingsDialog({
           </Sidebar>
 
           <SidebarInset className="settings-content">
+            <section className={cn('settings-section', tab !== 'appearance' && 'hidden')}>
+              <div className="settings-section-heading">
+                <div><h3>外观</h3><p>调整字体和重点色，修改会立即应用到整个 APP。</p></div>
+              </div>
+              <Separator />
+              <div className="appearance-settings">
+                <FieldSet className="appearance-group">
+                  <FieldLegend>应用字体</FieldLegend>
+                  <FieldDescription>Noto Sans SC 和仿苹方随 APP 提供；Windows 系统字体缺失时会回退到 Noto Sans SC。</FieldDescription>
+                  <RadioGroup
+                    value={appearanceSettings.font}
+                    onValueChange={(font) => void run(() => onChangeAppearanceSettings({ ...appearanceSettings, font: font as AppearanceSettingsState['font'] }))}
+                    className="font-choice-grid"
+                    aria-label="应用字体"
+                  >
+                    {fontOptions.map((option) => (
+                      <label
+                        className={cn('appearance-choice font-choice', appearanceSettings.font === option.id && 'is-selected')}
+                        key={option.id}
+                        style={{ '--font-preview-family': option.family, '--font-preview-weight': option.weight } as CSSProperties}
+                      >
+                        <RadioGroupItem value={option.id} />
+                        <span className="font-choice-copy"><strong>{option.label}</strong><small>{option.sample}</small></span>
+                        <Badge variant={option.id === 'noto-sans-sc' || option.id === 'pingfang-bold' ? 'secondary' : 'outline'}>
+                          {option.id === 'noto-sans-sc' || option.id === 'pingfang-bold' ? '随包' : 'Windows'}
+                        </Badge>
+                      </label>
+                    ))}
+                  </RadioGroup>
+                </FieldSet>
+
+                <Separator />
+
+                <FieldSet className="appearance-group">
+                  <FieldLegend>重点色</FieldLegend>
+                  <FieldDescription>用于主按钮、选中状态、链接和界面强调元素，不改变警告与错误颜色。</FieldDescription>
+                  <RadioGroup
+                    value={appearanceSettings.accent}
+                    onValueChange={(accent) => void run(() => onChangeAppearanceSettings({ ...appearanceSettings, accent: accent as AppearanceSettingsState['accent'] }))}
+                    className="accent-choice-grid"
+                    aria-label="应用重点色"
+                  >
+                    {accentOptions.map((option) => (
+                      <label className={cn('appearance-choice accent-choice', appearanceSettings.accent === option.id && 'is-selected')} key={option.id}>
+                        <RadioGroupItem value={option.id} />
+                        <span className="accent-swatch" style={{ '--accent-swatch': option.color } as CSSProperties} />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </RadioGroup>
+                </FieldSet>
+              </div>
+            </section>
+
             <section className={cn('settings-section', tab !== 'signatures' && 'hidden')}>
               <div className="settings-section-heading">
                 <div><h3>邮件签名</h3><p>签名会显示在主界面下拉框中，导入文件会复制到应用专用目录。</p></div>

@@ -11,6 +11,7 @@ import {
   selectTemplate
 } from './templateCatalog';
 import { getValidationPolicy, saveValidationPolicy } from './validationPolicy';
+import { getAppearanceSettings, saveAppearanceSettings } from './appearanceSettings';
 
 type WorkerCommand = 'capabilities' | 'inspect-xlsx' | 'import' | 'accounts' | 'create-drafts';
 const WORKER_PROTOCOL_VERSION = 1;
@@ -177,7 +178,7 @@ function createWindow(): void {
   mainWindow.on('unmaximize', publishMaximizedState);
 
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
-  const settingsCapture = ['settings', 'templates', 'signatures', 'outlook', 'safety', 'validation-rules'].includes(captureState);
+  const settingsCapture = ['settings', 'templates', 'signatures', 'outlook', 'safety', 'validation-rules', 'appearance'].includes(captureState);
   const importCapture = captureState === 'import';
   const realImportCapture = captureState === 'real-import';
   const warningCapture = captureState === 'warning';
@@ -195,6 +196,8 @@ function createWindow(): void {
   const creationResultCapture = captureState === 'creation-result';
   const settingsCaptureValue = captureState === 'outlook'
     ? 'outlook'
+    : captureState === 'appearance' || captureState === 'settings'
+    ? 'appearance'
     : captureState === 'safety' || captureState === 'validation-rules'
     ? 'safety'
     : 'signatures';
@@ -1075,6 +1078,14 @@ app.whenReady().then(() => {
   ipcMain.handle('validation-policy:save', (event, value: unknown) => {
     assertTrustedEvent(event);
     return saveValidationPolicy(value);
+  });
+  ipcMain.handle('appearance-settings:get', (event) => {
+    assertTrustedEvent(event);
+    return getAppearanceSettings();
+  });
+  ipcMain.handle('appearance-settings:save', (event, value: unknown) => {
+    assertTrustedEvent(event);
+    return saveAppearanceSettings(value);
   });
 
   ipcMain.handle('worker:inspect-xlsx', (event, filePath: string) => {

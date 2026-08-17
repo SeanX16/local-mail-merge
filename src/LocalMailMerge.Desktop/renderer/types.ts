@@ -99,6 +99,15 @@ export interface ValidationPolicyState {
   rules: Record<ValidationRuleId, ValidationRuleLevel>;
 }
 
+export type AppFontId = 'noto-sans-sc' | 'segoe-ui' | 'microsoft-yahei' | 'pingfang-bold';
+export type AccentColorId = 'blue' | 'amber' | 'cyan' | 'emerald' | 'fuchsia' | 'green' | 'indigo' | 'lime' | 'orange' | 'pink';
+
+export interface AppearanceSettingsState {
+  version: 1;
+  font: AppFontId;
+  accent: AccentColorId;
+}
+
 export type DraftCreationOutcome = 'Success' | 'Skipped' | 'Failed';
 
 export interface DraftCreationItemResult {
@@ -140,6 +149,8 @@ export interface DesktopApi {
   openTemplateFolder(): Promise<void>;
   getValidationPolicy(): Promise<ValidationPolicyState>;
   saveValidationPolicy(value: ValidationPolicyState): Promise<ValidationPolicyState>;
+  getAppearanceSettings(): Promise<AppearanceSettingsState>;
+  saveAppearanceSettings(value: AppearanceSettingsState): Promise<AppearanceSettingsState>;
   createDrafts(payload: CreateDraftsRequest): Promise<DraftCreationResponse>;
   showReport(reportPath: string): Promise<void>;
   minimize(): Promise<void>;

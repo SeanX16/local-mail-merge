@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Copy, MailPlus, Minus, Square, X } from 'lucide-react';
+import { MailPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function WindowTitleBar() {
@@ -27,21 +27,21 @@ export function WindowTitleBar() {
         <span>Local Mail Merge</span>
       </div>
       <div className="window-controls" role="group" aria-label="窗口控制">
-        <Button variant="ghost" size="icon-sm" className="window-control" aria-label="最小化窗口" title="最小化" onClick={minimize}>
-          <Minus />
+        <Button variant="ghost" size="icon" className="window-control" aria-label="最小化窗口" title="最小化" onClick={minimize}>
+          <span className="window-control-glyph" aria-hidden="true">{'\uE921'}</span>
         </Button>
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           className="window-control"
           aria-label={maximized ? '还原窗口' : '最大化窗口'}
           title={maximized ? '还原' : '最大化'}
           onClick={toggleMaximize}
         >
-          {maximized ? <Copy /> : <Square />}
+          <span className="window-control-glyph" aria-hidden="true">{maximized ? '\uE923' : '\uE922'}</span>
         </Button>
-        <Button variant="ghost" size="icon-sm" className="window-control window-control--close" aria-label="关闭窗口" title="关闭" onClick={close}>
-          <X />
+        <Button variant="ghost" size="icon" className="window-control window-control--close" aria-label="关闭窗口" title="关闭" onClick={close}>
+          <span className="window-control-glyph" aria-hidden="true">{'\uE8BB'}</span>
         </Button>
       </div>
     </header>

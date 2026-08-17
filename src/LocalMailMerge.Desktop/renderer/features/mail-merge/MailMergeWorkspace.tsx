@@ -49,7 +49,7 @@ import type {
   OutlookAccount,
   TemplateState
 } from '../../types';
-import type { SettingsTab } from '../../SettingsDialog';
+import { DEFAULT_SETTINGS_TAB, type SettingsTab } from '../../settingsNavigation';
 import { getValidationRuleText, validationLevelLabels } from '../../validationRules';
 import {
   CommandDropdown,
@@ -451,7 +451,7 @@ export function MailMergeWorkspace({
             />
           </div>
           <Button variant="ghost" size="icon" aria-label="关于"><Info /></Button>
-          <Button variant="ghost" size="icon" aria-label="设置" onClick={() => onOpenSettings('signatures')}><Settings /></Button>
+          <Button variant="ghost" size="icon" aria-label="设置" onClick={() => onOpenSettings(DEFAULT_SETTINGS_TAB)}><Settings /></Button>
         </section>
 
         <section className="summary-bar" aria-label="导入汇总">

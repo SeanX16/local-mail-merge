@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('desktopApi', {
   openTemplateFolder: (): Promise<void> => ipcRenderer.invoke('templates:open-folder'),
   getValidationPolicy: (): Promise<unknown> => ipcRenderer.invoke('validation-policy:get'),
   saveValidationPolicy: (value: unknown): Promise<unknown> => ipcRenderer.invoke('validation-policy:save', value),
+  getAppearanceSettings: (): Promise<unknown> => ipcRenderer.invoke('appearance-settings:get'),
+  saveAppearanceSettings: (value: unknown): Promise<unknown> => ipcRenderer.invoke('appearance-settings:save', value),
   createDrafts: (payload: unknown): Promise<unknown> => ipcRenderer.invoke('worker:create-drafts', payload),
   showReport: (reportPath: string): Promise<void> => ipcRenderer.invoke('shell:show-report', reportPath),
   minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
