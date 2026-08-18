@@ -6,7 +6,7 @@ export const demoFields: FieldDefinition[] = [
   { key: 'target_role', label: '目标岗位', defaultVisible: true, width: 164 },
   { key: 'organization', label: '机构', defaultVisible: true, width: 126 },
   { key: 'country', label: '国家/地区', defaultVisible: true, width: 118 },
-  { key: 'review_status', label: '审核状态', defaultVisible: true, width: 112 },
+  { key: 'review_status', label: '审核状态', defaultVisible: false, width: 112 },
   { key: '__validation', label: '校验结果', defaultVisible: true, width: 126 },
   { key: 'conference', label: '会议', defaultVisible: false, width: 142 },
   { key: 'paper_title', label: '论文标题', defaultVisible: false, width: 220 },

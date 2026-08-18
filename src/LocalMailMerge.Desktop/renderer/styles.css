@@ -262,6 +262,8 @@ body { font-size: 13px; line-height: 1.45; }
 .column-sort { min-width: 0; flex: 1; height: 28px; justify-content: flex-start; padding-inline: 2px; font-size: 12px; font-weight: 600; }
 .column-sort span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .column-filter-button { position: relative; color: var(--muted-foreground); }
+.column-filter-button:hover,
+.column-filter-button[data-state="open"] { background: color-mix(in oklch, var(--foreground) 9%, transparent); }
 .column-filter-button.is-active { color: var(--primary); background: color-mix(in oklch, var(--primary) 10%, transparent); }
 .filter-count { position: absolute; top: -4px; right: -3px; min-width: 13px; height: 13px; display: grid; place-items: center; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); font-size: 9px; }
 .column-resizer { position: absolute; top: 4px; right: -3px; width: 6px; height: 26px; cursor: col-resize; touch-action: none; }
