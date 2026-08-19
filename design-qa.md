@@ -145,3 +145,77 @@ final result: passed
 - 本轮未修改 Worker、Excel 解析协议、校验规则、Outlook 草稿 `Save()` 或 IPC 安全边界。
 
 final result: passed
+
+---
+
+# 签名下拉选择器 Design QA
+
+## 比较基准
+
+- source visual truth path: `C:\Users\Sean\AppData\Local\Temp\codex-clipboard-eee2c26c-15f0-464b-aa6d-c99ac10f26d6.png`
+- implementation screenshot path（关闭态）: `C:\Users\Sean\AppData\Local\Temp\local-mail-merge-signature-dropdown-closed-v3.png`
+- implementation screenshot path（展开态）: `C:\Users\Sean\AppData\Local\Temp\local-mail-merge-signature-dropdown-open-v2.png`
+- viewport: Electron 窗口目标尺寸 1366 × 768 DIP；当前 Windows 显示缩放下原生截图均为 2634 × 1483 px
+- density normalization: 源图与两张实现图的像素尺寸完全一致，按 1:1 像素比较，未缩放或重采样
+- state: 设置 > 邮件签名；临时目录内共 13 个签名；分别比较下拉关闭态和展开态
+
+源图是修改前界面，用户明确要求把会随签名数量增长的长条列表改为下拉选择器。因此，下拉控件本身属于已确认的行为差异；其余弹窗结构、排版层级、字体、色彩与下方签名详情区应延续现有界面。
+
+## Full-view comparison evidence
+
+- 弹窗尺寸、顶部标题、左侧设置导航、右侧分区标题和底部操作栏与源图保持一致。
+- 关闭态只占一行选择器高度；签名数量从 1 增加到 13 时，预览、文件信息和测试草稿区的位置不再随条目数量下移。
+- 展开态菜单覆盖下方内容而不触发布局重排；菜单限定高度，并在内部滚动。
+- 预览区域限定为 116px 的 shadcn `ScrollArea`，长签名在预览内部滚动，不继续挤压下方信息。
+
+## Focused region comparison evidence
+
+未额外制作裁切图。三张 2634 × 1483 px 原图在同一比较输入中打开，中央签名设置区域占据画面主要面积，签名名称、文件名、Badge、预览正文和测试草稿提示均可清晰辨认，继续裁切不会增加判断信息。
+
+## Required fidelity surfaces
+
+- Fonts and typography: 沿用项目既有 Noto Sans SC / PingFang 字体栈、标题层级、控件字号与行高；长名称和文件名使用单行省略。
+- Spacing and layout rhythm: 选择器、辅助操作、预览、信息条和测试按钮保持稳定垂直节奏；13 个签名不会改变详情区位置。
+- Colors and visual tokens: 复用现有 shadcn `Select`、`Badge`、`Button`、`Field` 和 `ScrollArea` 的主题 token，没有新增独立配色体系。
+- Image quality and asset fidelity: 本页面没有位图素材；图标继续使用项目既有 Lucide 图标，未引入手绘 SVG、占位图或近似资产。
+- Copy and content: 保留“当前签名”“打开签名目录”“删除当前签名”“创建无收件人测试草稿”等功能文案；内置与导入来源继续通过 Badge 区分。
+
+## Findings
+
+- 没有残留 P0、P1 或 P2 问题。
+- [P3] 弹窗首次打开时，键盘焦点轮廓会显示在左侧第一个可聚焦设置项上。这是 Radix Dialog 的可访问性自动聚焦状态，不影响鼠标使用或签名选择，保留为可接受差异。
+
+## Comparison history
+
+### Iteration 1（blocked）
+
+- evidence: `C:\Users\Sean\AppData\Local\Temp\local-mail-merge-signature-dropdown-closed.png`、`C:\Users\Sean\AppData\Local\Temp\local-mail-merge-signature-dropdown-open.png`
+- [P2] 固定预览区高度为 150px，导致下方测试草稿动作在目标视口内不够稳定。
+- [P2] 展开菜单中 Badge 未稳定靠右，名称、文件名和来源信息的列对齐不一致。
+- fixes: 预览 `ScrollArea` 高度调整为 116px；让 shadcn SelectItem 的 ItemText 容器占满剩余宽度，以固定三列布局。
+
+### Iteration 2（passed）
+
+- evidence: `C:\Users\Sean\AppData\Local\Temp\local-mail-merge-signature-dropdown-closed-v3.png`、`C:\Users\Sean\AppData\Local\Temp\local-mail-merge-signature-dropdown-open-v2.png`
+- post-fix result: 下方预览、信息和测试草稿区在 1366 × 768 目标窗口中可见；菜单中的名称、文件名和 Badge 对齐；展开菜单不改变详情区纵向位置。
+
+## Primary interactions and runtime checks
+
+- 打开“设置 > 邮件签名”。
+- 在 13 个签名的临时目录中展开下拉菜单。
+- 验证菜单内部滚动且不推动下方详情。
+- 验证签名实际 HTML 预览、安全状态、文件信息和测试草稿动作均存在。
+- 验证演示模式不会写入 Outlook。
+- renderer console errors: 0
+- automated stress smoke: passed（16/16 checks）
+
+## Implementation checklist
+
+- [x] 使用项目已有 shadcn Select 替代纵向签名条目列表
+- [x] 使用 shadcn ScrollArea 固定签名预览高度
+- [x] 保留当前签名的来源 Badge 与文件名
+- [x] 保留打开目录、删除当前签名与测试草稿动作
+- [x] 验证大量签名时菜单内部滚动且详情区不重排
+- [x] 通过 TypeScript、生产构建、Core 测试和 Electron 压力冒烟测试
+
+final result: passed

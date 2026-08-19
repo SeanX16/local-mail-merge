@@ -1,10 +1,12 @@
-import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties, type FormEvent } from 'react';
 import {
   CircleCheck,
   FolderOpen,
   Loader2,
   Mail,
+  MailCheck,
   Palette,
+  PencilLine,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -27,10 +29,20 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { FieldDescription, FieldLegend, FieldSet } from '@/components/ui/field';
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { HintTooltip } from '@/components/HintTooltip';
+import { SignaturePreview } from './SignaturePreview';
 import {
   Sidebar,
   SidebarContent,
@@ -47,6 +59,7 @@ import { cn } from '@/lib/utils';
 import type {
   AppearanceSettingsState,
   OutlookAccount,
+  SignatureInspection,
   TemplateState,
   ValidationPolicyState,
   ValidationRuleId,
@@ -69,14 +82,21 @@ const settingsMenuButtonClass = 'data-[active=false]:text-muted-foreground data-
 
 export function SettingsDialog({
   templateState,
+  selectedTemplateId,
+  signatureInspection,
+  signatureInspectionLoading,
+  signatureInspectionError,
   accounts,
+  selectedAccountId,
   accountsLoading,
   accountError,
   initialTab = DEFAULT_SETTINGS_TAB,
   onSelectTemplate,
   onImportTemplate,
+  onRenameTemplate,
   onDeleteTemplate,
   onOpenTemplateFolder,
+  onCreateSignatureTestDraft,
   onRefreshAccounts,
   validationPolicy,
   onMoveValidationRule,
@@ -86,14 +106,21 @@ export function SettingsDialog({
   onClose
 }: {
   templateState: TemplateState;
+  selectedTemplateId: string;
+  signatureInspection: SignatureInspection | null;
+  signatureInspectionLoading: boolean;
+  signatureInspectionError: string;
   accounts: OutlookAccount[];
+  selectedAccountId: string;
   accountsLoading: boolean;
   accountError: string;
   initialTab?: SettingsTab;
   onSelectTemplate: (id: string) => Promise<void>;
   onImportTemplate: () => Promise<void>;
+  onRenameTemplate: (id: string, name: string) => Promise<void>;
   onDeleteTemplate: (id: string) => Promise<void>;
   onOpenTemplateFolder: () => Promise<void>;
+  onCreateSignatureTestDraft: () => Promise<void>;
   onRefreshAccounts: () => Promise<void>;
   validationPolicy: ValidationPolicyState;
   onMoveValidationRule: (ruleId: ValidationRuleId, level: ValidationRuleLevel, targetRuleId?: ValidationRuleId, edge?: 'before' | 'after') => Promise<void>;
@@ -105,6 +132,9 @@ export function SettingsDialog({
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [busy, setBusy] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState('');
+  const [renameTemplateId, setRenameTemplateId] = useState('');
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState('');
 
   async function run(action: () => Promise<void>) {
     if (busy) return;
@@ -112,9 +142,39 @@ export function SettingsDialog({
     try { await action(); } finally { setBusy(false); }
   }
 
+  function openRenameDialog(id: string, name: string) {
+    setRenameTemplateId(id);
+    setRenameValue(name);
+    setRenameError('');
+  }
+
+  async function submitRename(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = renameValue.trim();
+    if (!name) {
+      setRenameError('请输入签名名称。');
+      return;
+    }
+    if (busy || !renameTemplateId) return;
+    setBusy(true);
+    setRenameError('');
+    try {
+      await onRenameTemplate(renameTemplateId, name);
+      setRenameTemplateId('');
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : '重命名失败，请重试。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const pendingTemplate = templateState.templates.find((template) => template.id === pendingDeleteId);
+  const selectedTemplate = templateState.templates.find((template) => template.id === selectedTemplateId);
+  const selectedAccount = accounts.find((account) => account.storeId === selectedAccountId);
+  const demoAccount = selectedAccount?.smtpAddress.endsWith('.test') ?? false;
 
   return (
+    <>
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="settings-dialog" aria-describedby="settings-description" showCloseButton={false}>
         <DialogHeader className="settings-header">
@@ -202,7 +262,7 @@ export function SettingsDialog({
 
             <section className={cn('settings-section', tab !== 'signatures' && 'hidden')}>
               <div className="settings-section-heading">
-                <div><h3>邮件签名</h3><p>签名会显示在主界面下拉框中，导入文件会复制到应用专用目录。</p></div>
+                <div><h3>邮件签名</h3><p>签名会显示在主界面下拉框中；导入 HTML 时会一并打包同目录或子目录中的图片。</p></div>
                 <Button size="sm" disabled={busy} onClick={() => void run(onImportTemplate)}>
                   {busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Plus data-icon="inline-start" />}
                   导入签名
@@ -210,29 +270,83 @@ export function SettingsDialog({
               </div>
               <Separator />
               {templateState.templates.length ? (
-                <RadioGroup
-                  value={templateState.selectedTemplateId}
-                  onValueChange={(id) => void run(() => onSelectTemplate(id))}
-                  className="template-list"
-                >
-                  {templateState.templates.map((template) => (
-                    <label className={cn('template-row', template.id === templateState.selectedTemplateId && 'is-selected')} key={template.id}>
-                      <RadioGroupItem value={template.id} />
-                      <span className="template-icon"><Signature /></span>
-                      <span className="template-copy"><strong>{template.name}</strong><small>{template.fileName}</small></span>
-                      <Badge variant={template.source === 'bundled' ? 'secondary' : 'outline'}>{template.source === 'bundled' ? '内置' : '已导入'}</Badge>
-                      {template.source === 'user' ? (
-                        <Button type="button" variant="ghost" size="icon-sm" onClick={(event) => { event.preventDefault(); setPendingDeleteId(template.id); }} aria-label={`删除 ${template.name}`}><Trash2 /></Button>
-                      ) : <span className="template-action-spacer" />}
-                    </label>
-                  ))}
-                </RadioGroup>
+                <Field className="signature-selector-field">
+                  <FieldLabel htmlFor="signature-settings-select">当前签名</FieldLabel>
+                  <Select
+                    value={selectedTemplateId}
+                    disabled={busy}
+                    onValueChange={(id) => void run(() => onSelectTemplate(id))}
+                  >
+                    <SelectTrigger id="signature-settings-select" data-testid="signature-settings-select" className="signature-select-trigger" aria-label="当前签名">
+                      <SelectValue>
+                        {selectedTemplate ? (
+                          <span className="signature-select-value">
+                            <span className="signature-select-icon"><Signature /></span>
+                            <span className="signature-select-copy"><strong>{selectedTemplate.name}</strong><small>{selectedTemplate.fileName}</small></span>
+                            <Badge variant={selectedTemplate.source === 'bundled' ? 'secondary' : 'outline'}>{selectedTemplate.source === 'bundled' ? '内置' : '已导入'}</Badge>
+                          </span>
+                        ) : '请选择邮件签名'}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent position="popper" align="start" className="signature-select-content">
+                      <SelectGroup>
+                        {templateState.templates.map((template) => (
+                          <SelectItem value={template.id} textValue={`${template.name} ${template.fileName}`} className="signature-select-item" data-testid="signature-settings-option" key={template.id}>
+                            <span className="signature-select-option">
+                              <span className="signature-select-icon"><Signature /></span>
+                              <span className="signature-select-copy"><strong>{template.name}</strong><small>{template.fileName}</small></span>
+                              <Badge variant={template.source === 'bundled' ? 'secondary' : 'outline'}>{template.source === 'bundled' ? '内置' : '已导入'}</Badge>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
               ) : (
                 <Empty>
                   <EmptyHeader><EmptyMedia variant="icon"><Signature /></EmptyMedia><EmptyTitle>还没有签名</EmptyTitle><EmptyDescription>导入 .oft 或 HTML 文件后即可选择。</EmptyDescription></EmptyHeader>
                 </Empty>
               )}
-              <Button variant="ghost" size="sm" className="settings-folder-link" disabled={busy} onClick={() => void run(onOpenTemplateFolder)}><FolderOpen data-icon="inline-start" />打开签名目录</Button>
+              <div className="signature-template-actions">
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(onOpenTemplateFolder)}><FolderOpen data-icon="inline-start" />打开签名目录</Button>
+                {selectedTemplate?.source === 'user' ? (
+                  <>
+                    <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => openRenameDialog(selectedTemplate.id, selectedTemplate.name)}><PencilLine data-icon="inline-start" />重命名</Button>
+                    <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => setPendingDeleteId(selectedTemplate.id)}><Trash2 data-icon="inline-start" />删除当前签名</Button>
+                  </>
+                ) : null}
+              </div>
+              <div className="signature-settings-detail">
+                <SignaturePreview
+                  inspection={signatureInspection}
+                  loading={signatureInspectionLoading}
+                  error={signatureInspectionError}
+                  showIssues
+                  constrained
+                />
+                {signatureInspection ? (
+                  <dl className="signature-inspection-facts">
+                    <div><dt>文件</dt><dd>{selectedTemplate?.fileName ?? '未选择'}</dd></div>
+                    <div><dt>预览能力</dt><dd>{signatureInspection.previewComplete ? '完整 HTML 预览' : '有限预览，需 Outlook 测试'}</dd></div>
+                    <div><dt>内嵌资源</dt><dd>{signatureInspection.inlineAttachments.length} 个</dd></div>
+                    <div><dt>普通附件</dt><dd>{signatureInspection.regularAttachments.length} 个</dd></div>
+                  </dl>
+                ) : null}
+                <div className="signature-test-actions">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy || signatureInspectionLoading || !signatureInspection?.canUse || !selectedAccount || demoAccount}
+                    onClick={() => void run(onCreateSignatureTestDraft)}
+                  >
+                    {busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <MailCheck data-icon="inline-start" />}
+                    创建无收件人测试草稿
+                  </Button>
+                  <span>{demoAccount ? '演示账户不会写入 Outlook。' : selectedAccount ? `保存到 ${selectedAccount.smtpAddress || selectedAccount.displayName} 的草稿箱。` : '请先在主界面选择 Outlook 账户。'}</span>
+                </div>
+              </div>
               {pendingTemplate ? (
                 <Alert variant="destructive" className="settings-inline-confirm">
                   <TriangleAlert />
@@ -304,6 +418,38 @@ export function SettingsDialog({
         </HintTooltip>
       </DialogContent>
     </Dialog>
+    <Dialog open={Boolean(renameTemplateId)} onOpenChange={(open) => { if (!open && !busy) setRenameTemplateId(''); }}>
+      <DialogContent className="signature-rename-dialog">
+        <form className="signature-rename-form" onSubmit={(event) => void submitRename(event)}>
+          <DialogHeader>
+            <DialogTitle>重命名签名</DialogTitle>
+            <DialogDescription>只修改 APP 中显示的名称，不会更改原始文件名或签名内容。</DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field data-invalid={Boolean(renameError)}>
+              <FieldLabel htmlFor="signature-display-name">签名名称</FieldLabel>
+              <Input
+                id="signature-display-name"
+                value={renameValue}
+                maxLength={60}
+                autoFocus
+                aria-invalid={Boolean(renameError)}
+                onChange={(event) => { setRenameValue(event.target.value); setRenameError(''); }}
+              />
+              <FieldDescription>{renameError || '最多 60 个字符；文件名仍会作为辅助信息显示。'}</FieldDescription>
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline" disabled={busy}>取消</Button></DialogClose>
+            <Button type="submit" disabled={busy || !renameValue.trim()}>
+              {busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : null}
+              保存名称
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

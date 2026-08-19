@@ -18,7 +18,7 @@ internal static class Program
         Console.InputEncoding = System.Text.Encoding.UTF8;
         if (args.Length != 1)
         {
-            Console.Error.WriteLine("用法：LocalMailMerge.Worker <capabilities|inspect-xlsx|import|accounts|create-drafts>");
+            Console.Error.WriteLine("用法：LocalMailMerge.Worker <capabilities|inspect-xlsx|import|accounts|inspect-template|test-signature|create-drafts>");
             return 2;
         }
 
@@ -32,6 +32,8 @@ internal static class Program
                 "inspect-xlsx" => await InspectXlsxAsync(document.RootElement).ConfigureAwait(false),
                 "import" => await ImportAsync(document.RootElement).ConfigureAwait(false),
                 "accounts" => await ListAccountsAsync().ConfigureAwait(false),
+                "inspect-template" => await InspectTemplateAsync(document.RootElement).ConfigureAwait(false),
+                "test-signature" => await CreateSignatureTestDraftAsync(document.RootElement).ConfigureAwait(false),
                 "create-drafts" => await CreateDraftsAsync(document.RootElement).ConfigureAwait(false),
                 _ => throw new InvalidOperationException("不支持的本地助手命令。")
             };
@@ -47,9 +49,11 @@ internal static class Program
 
     private static object Capabilities() => new
     {
-        protocolVersion = 1,
+        protocolVersion = 2,
         validationPolicyVersion = 1,
-        supportsValidationIssues = true
+        supportsValidationIssues = true,
+        supportsSignatureInspection = true,
+        supportsSignatureTestDraft = true
     };
 
     private static async Task<object> InspectXlsxAsync(JsonElement input)
@@ -77,6 +81,19 @@ internal static class Program
         });
     }
 
+    private static async Task<object> InspectTemplateAsync(JsonElement input)
+    {
+        var templatePath = RequiredString(input, "templatePath");
+        return await new OutlookDraftService().InspectTemplateAsync(templatePath).ConfigureAwait(false);
+    }
+
+    private static async Task<object> CreateSignatureTestDraftAsync(JsonElement input)
+    {
+        var templatePath = RequiredString(input, "templatePath");
+        var account = ReadAccount(input);
+        return await new OutlookDraftService().CreateSignatureTestDraftAsync(account, templatePath).ConfigureAwait(false);
+    }
+
     private static async Task<object> CreateDraftsAsync(JsonElement input)
     {
         var packagePath = RequiredString(input, "packagePath");
@@ -86,16 +103,7 @@ internal static class Program
             : throw new InvalidDataException("未提供所选人员。 ");
         if (selectedIds.Count == 0) throw new InvalidDataException("至少选择一条可创建记录。 ");
 
-        if (!input.TryGetProperty("account", out var accountElement) || accountElement.ValueKind != JsonValueKind.Object)
-        {
-            throw new InvalidDataException("未提供 Outlook 发件账户。 ");
-        }
-
-        var account = new OutlookAccountInfo(
-            RequiredInt32(accountElement, "index"),
-            RequiredString(accountElement, "displayName"),
-            RequiredString(accountElement, "smtpAddress", allowEmpty: true),
-            RequiredString(accountElement, "storeId"));
+        var account = ReadAccount(input);
 
         var batch = await LoadAndValidateAsync(packagePath, ReadXlsxOptions(input), ReadValidationPolicy(input)).ConfigureAwait(false);
         var selected = batch.Messages.Where(message => selectedIds.Contains(message.PersonId)).ToList();
@@ -122,6 +130,20 @@ internal static class Program
             },
             results
         };
+    }
+
+    private static OutlookAccountInfo ReadAccount(JsonElement input)
+    {
+        if (!input.TryGetProperty("account", out var accountElement) || accountElement.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException("未提供 Outlook 发件账户。 ");
+        }
+
+        return new OutlookAccountInfo(
+            RequiredInt32(accountElement, "index"),
+            RequiredString(accountElement, "displayName"),
+            RequiredString(accountElement, "smtpAddress", allowEmpty: true),
+            RequiredString(accountElement, "storeId"));
     }
 
     private static async Task<OutreachBatch> LoadAndValidateAsync(

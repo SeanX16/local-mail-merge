@@ -7,14 +7,15 @@ import {
   getTemplateState,
   getUserTemplateDirectory,
   importTemplate,
+  renameTemplate,
   resolveTemplatePath,
   selectTemplate
 } from './templateCatalog';
 import { getValidationPolicy, saveValidationPolicy } from './validationPolicy';
 import { getAppearanceSettings, saveAppearanceSettings } from './appearanceSettings';
 
-type WorkerCommand = 'capabilities' | 'inspect-xlsx' | 'import' | 'accounts' | 'create-drafts';
-const WORKER_PROTOCOL_VERSION = 1;
+type WorkerCommand = 'capabilities' | 'inspect-xlsx' | 'import' | 'accounts' | 'inspect-template' | 'test-signature' | 'create-drafts';
+const WORKER_PROTOCOL_VERSION = 2;
 
 let mainWindow: BrowserWindow | null = null;
 const isDemo = process.argv.includes('--demo');
@@ -59,6 +60,17 @@ function assertTrustedEvent(event: IpcMainInvokeEvent): void {
 function requireRecord(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(message);
   return value as Record<string, unknown>;
+}
+
+function assertTemplateCanUse(value: unknown): void {
+  const inspection = requireRecord(value, '签名检查结果无效。');
+  if (inspection.canUse === true) return;
+  const issues = Array.isArray(inspection.issues) ? inspection.issues : [];
+  const messages = issues
+    .map((issue) => issue && typeof issue === 'object' ? issue as Record<string, unknown> : null)
+    .filter((issue) => issue?.severity === 'blocking' && typeof issue.message === 'string')
+    .map((issue) => issue!.message as string);
+  throw new Error(messages.join(' ') || '所选签名未通过安全检查。');
 }
 
 function resolveLocalReportPath(value: unknown): string {
@@ -179,7 +191,9 @@ function createWindow(): void {
 
   const rendererUrl = process.env.ELECTRON_RENDERER_URL;
   const settingsCloseActiveCapture = captureState === 'appearance-close-active';
-  const settingsCapture = ['settings', 'templates', 'signatures', 'outlook', 'safety', 'validation-rules', 'appearance', 'appearance-close-active'].includes(captureState);
+  const signatureSettingsMenuCapture = captureState === 'signatures-open';
+  const signatureRenameCapture = captureState === 'signatures-rename';
+  const settingsCapture = ['settings', 'templates', 'signatures', 'signatures-open', 'signatures-rename', 'signatures-imported', 'outlook', 'safety', 'validation-rules', 'appearance', 'appearance-close-active'].includes(captureState);
   const importCapture = captureState === 'import';
   const realImportCapture = captureState === 'real-import';
   const warningCapture = captureState === 'warning';
@@ -384,6 +398,42 @@ function createWindow(): void {
         mainWindow!.webContents.sendInputEvent({ type: 'mouseDown', x: closeRect.x, y: closeRect.y, button: 'left', clickCount: 1 });
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
+      if (captureState === 'reference' || captureState === 'signatures' || signatureSettingsMenuCapture || signatureRenameCapture) {
+        const signatureReady = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const deadline = performance.now() + 3500;
+            while (document.querySelector('.signature-preview-loading') && performance.now() < deadline) {
+              await wait(50);
+            }
+            return Boolean(document.querySelector('.signature-preview-html, .signature-preview-alert'))
+              && !document.querySelector('.signature-preview-loading');
+          })()
+        `) as boolean;
+        if (!signatureReady) throw new Error('签名预览未在截图前完成加载。');
+      }
+      if (signatureSettingsMenuCapture) {
+        await mainWindow!.webContents.executeJavaScript(`
+          (() => {
+            const trigger = document.querySelector('[data-testid="signature-settings-select"]');
+            trigger?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
+            trigger?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+          })()
+        `);
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      }
+      if (signatureRenameCapture) {
+        const renameOpened = await mainWindow!.webContents.executeJavaScript(`
+          (() => {
+            const button = [...document.querySelectorAll('.signature-template-actions button')]
+              .find((element) => element.textContent?.includes('重命名'));
+            button?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+            return Boolean(button);
+          })()
+        `) as boolean;
+        if (!renameOpened) throw new Error('签名重命名按钮不存在。');
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      }
       const image = await mainWindow!.webContents.capturePage();
       fs.mkdirSync(path.dirname(capturePath), { recursive: true });
       fs.writeFileSync(capturePath, image.toPNG());
@@ -394,6 +444,98 @@ function createWindow(): void {
   } else if (smokePath) {
     mainWindow.webContents.once('did-finish-load', async () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
+      if (captureState === 'signatures-imported') {
+        const importedSignatureResult = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const deadline = performance.now() + 3500;
+            while (document.querySelector('.signature-preview-loading') && performance.now() < deadline) await wait(40);
+            const settingsContent = document.querySelector('.settings-content');
+            const detail = document.querySelector('.signature-settings-detail');
+            const previewScroll = document.querySelector('.signature-preview-scroll');
+            const previewViewport = previewScroll?.querySelector('[data-slot="scroll-area-viewport"]');
+            const preview = document.querySelector('.signature-preview-html');
+            const resourceFact = [...document.querySelectorAll('.signature-inspection-facts > div')]
+              .find((item) => item.querySelector('dt')?.textContent?.includes('内嵌资源'));
+            const renameButton = [...document.querySelectorAll('.signature-template-actions button')]
+              .find((item) => item.textContent?.includes('重命名'));
+            const checks = {
+              importedSignatureSelected: document.querySelector('.signature-select-value')?.textContent?.includes('已导入') === true,
+              renameActionVisible: Boolean(renameButton),
+              actualPreviewLoaded: Boolean(preview && preview.textContent?.trim()),
+              embeddedImageRendered: Boolean(preview?.querySelector('img[src^="data:image/"]')),
+              embeddedResourceCounted: resourceFact?.textContent?.includes('1 个') === true,
+              settingsHasNoHorizontalOverflow: Boolean(settingsContent && settingsContent.scrollWidth <= settingsContent.clientWidth + 1),
+              detailFitsSettingsWidth: Boolean(detail && settingsContent && detail.getBoundingClientRect().right <= settingsContent.getBoundingClientRect().right + 1),
+              previewHasNoHorizontalOverflow: Boolean(previewViewport && previewViewport.scrollWidth <= previewViewport.clientWidth + 1),
+              previewKeepsFixedHeight: Math.round(previewScroll?.getBoundingClientRect().height ?? 0) === 116
+            };
+            return { checks, passed: Object.values(checks).every(Boolean) };
+          })()
+        `, true) as { checks: Record<string, boolean>; passed: boolean };
+        const result = {
+          ...importedSignatureResult,
+          consoleErrors: rendererConsoleErrors,
+          passed: importedSignatureResult.passed && rendererConsoleErrors.length === 0
+        };
+        fs.mkdirSync(path.dirname(smokePath), { recursive: true });
+        fs.writeFileSync(smokePath, JSON.stringify(result, null, 2));
+        mainWindow?.destroy();
+        app.exit(result.passed ? 0 : 1);
+        return;
+      }
+      if (captureState === 'signatures') {
+        const signatureResult = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const deadline = performance.now() + 3500;
+            while (document.querySelector('.signature-preview-loading') && performance.now() < deadline) await wait(40);
+            const preview = document.querySelector('.signature-preview-html');
+            const previewText = preview?.textContent ?? '';
+            const detail = document.querySelector('.signature-settings-detail');
+            const testButton = document.querySelector('.signature-test-actions button');
+            const selectTrigger = document.querySelector('[data-testid="signature-settings-select"]');
+            const detailTopBeforeOpen = detail?.getBoundingClientRect().top ?? 0;
+            selectTrigger?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
+            selectTrigger?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+            await wait(80);
+            const selectContent = document.querySelector('[data-slot="select-content"]');
+            const selectViewport = selectContent?.querySelector('[data-position]');
+            const signatureOptions = [...document.querySelectorAll('[data-testid="signature-settings-option"]')];
+            const detailTopAfterOpen = detail?.getBoundingClientRect().top ?? 0;
+            const checks = {
+              signaturesSettingsOpen: document.querySelector('[data-settings-tab="signatures"]')?.getAttribute('data-active') === 'true',
+              compactSelectVisible: Boolean(selectTrigger && selectTrigger.getBoundingClientRect().height <= 52),
+              selectorHasAccessibleLabel: selectTrigger?.getAttribute('aria-label') === '当前签名',
+              legacyStackRemoved: !document.querySelector('.template-list, .template-row'),
+              optionsOpenInOverlay: Boolean(selectContent && signatureOptions.length > 0 && Math.abs(detailTopBeforeOpen - detailTopAfterOpen) <= 1),
+              manyOptionsScrollInsideMenu: signatureOptions.length < 8 || Boolean(selectViewport && selectViewport.scrollHeight > selectViewport.clientHeight),
+              actualPreviewLoaded: Boolean(preview),
+              selectedContentVisible: previewText.includes('Example Talent Team'),
+              oldPlaceholderAbsent: !previewText.includes('Talent Acquisition Team'),
+              previewUsesFixedScrollArea: Math.round(document.querySelector('.signature-preview-scroll')?.getBoundingClientRect().height ?? 0) === 116,
+              inspectionFactsVisible: Boolean(detail?.textContent?.includes('完整 HTML 预览') && detail.textContent.includes('普通附件')),
+              statusBadgesVisible: Boolean(detail?.textContent?.includes('HTML') && detail.textContent.includes('可使用')),
+              noExternalImagesLoaded: !preview?.querySelector('img[src^="http:"]') && !preview?.querySelector('img[src^="https:"]'),
+              noCssImageRequests: [...(preview?.querySelectorAll('[style]') ?? [])].every((element) => !/url\\s*\\(/i.test(element.getAttribute('style') ?? '')),
+              testDraftActionVisible: Boolean(testButton?.textContent?.includes('创建无收件人测试草稿')),
+              demoModeCannotWriteOutlook: Boolean(testButton?.disabled)
+            };
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            return { checks, passed: Object.values(checks).every(Boolean) };
+          })()
+        `, true) as { checks: Record<string, boolean>; passed: boolean };
+        const result = {
+          ...signatureResult,
+          consoleErrors: rendererConsoleErrors,
+          passed: signatureResult.passed && rendererConsoleErrors.length === 0
+        };
+        fs.mkdirSync(path.dirname(smokePath), { recursive: true });
+        fs.writeFileSync(smokePath, JSON.stringify(result, null, 2));
+        mainWindow?.destroy();
+        app.exit(result.passed ? 0 : 1);
+        return;
+      }
       if (captureState === 'validation-rules') {
         const initial = await mainWindow!.webContents.executeJavaScript(`
           (async () => {
@@ -955,6 +1097,23 @@ function createWindow(): void {
           warningRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
           await wait(40);
           checks.rowDrivesPreview = (document.querySelector('.preview-metadata')?.textContent ?? '').length > 20;
+          checks.previewHasNoDemoAttachment = !(document.querySelector('.preview-metadata')?.textContent ?? '').includes('Offer_Letter_');
+          const previewFieldTrigger = document.querySelector('[data-testid="preview-field-trigger"]');
+          checks.previewFieldSelectorAvailable = Boolean(previewFieldTrigger);
+          checks.previewFieldTriggerHasNoArrow = !previewFieldTrigger?.querySelector('svg');
+          previewFieldTrigger?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+          previewFieldTrigger?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+          await wait(30);
+          checks.previewFieldMenuOpened = Boolean(document.querySelector('[data-testid="preview-field-menu"]'));
+          document.querySelector('[data-testid="preview-field-menu"] [data-field-key="country"]')?.click();
+          await wait(30);
+          const selectedPreviewValue = previewFieldTrigger?.textContent?.trim() ?? '';
+          checks.previewFieldSelectionUpdates = Boolean(selectedPreviewValue && selectedPreviewValue !== '—');
+          previewFieldTrigger?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+          previewFieldTrigger?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+          await wait(30);
+          document.querySelector('[data-testid="preview-field-menu"] [data-field-key="target_role"]')?.click();
+          await wait(30);
           checks.warningBannerVisible = Boolean(document.querySelector('.validation-issue-card--warning'));
 
           checks.pathUsesMiddleEllipsis = Boolean(document.querySelector('.path-directory') && document.querySelector('.path-filename')?.textContent?.includes('.json'));
@@ -968,6 +1127,13 @@ function createWindow(): void {
           document.querySelector('[data-testid="account-dropdown-option"]')?.click();
           await wait(30);
           checks.accountDropdownClosed = !document.querySelector('[data-testid="account-dropdown-menu"]');
+
+          const signatureDeadline = performance.now() + 3500;
+          while (document.querySelector('.signature-preview-loading') && performance.now() < signatureDeadline) await wait(40);
+          const signaturePreviewText = document.querySelector('.signature-preview-html')?.textContent ?? '';
+          checks.signaturePreviewLoaded = Boolean(document.querySelector('.signature-preview-html'));
+          checks.signaturePreviewUsesSelectedContent = signaturePreviewText.includes('Example Talent Team');
+          checks.signaturePreviewHasNoOldPlaceholder = !signaturePreviewText.includes('Talent Acquisition Team');
 
           const signatureDropdown = document.querySelector('[data-testid="signature-dropdown-trigger"]');
           signatureDropdown?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
@@ -1089,12 +1255,18 @@ app.whenReady().then(() => {
       if (!importedTemplate) throw new Error('导入后没有找到用户模板。');
       const resolved = resolveTemplatePath(importedTemplate.id);
       const copiedIntoCatalog = fs.existsSync(resolved);
+      const sourceHtml = importedTemplate.extension === '.oft' ? '' : fs.readFileSync(templateTestSource, 'utf8');
+      const sourceReferencesLocalImage = /<img\b[^>]*\bsrc\s*=\s*["'](?!data:image\/|https?:\/\/|\/\/|cid:)[^"']+/i.test(sourceHtml);
+      const localImagesPackaged = !sourceReferencesLocalImage || fs.readFileSync(resolved, 'utf8').includes('data:image/');
       const selected = selectTemplate(importedTemplate.id);
+      const renamed = renameTemplate(importedTemplate.id, '测试签名名称');
       const afterDelete = deleteTemplate(importedTemplate.id);
       const result = {
         checks: {
           copiedIntoCatalog,
+          localImagesPackaged,
           selectedAfterImport: selected.selectedTemplateId === importedTemplate.id,
+          renamedDisplayName: renamed.templates.find((template) => template.id === importedTemplate.id)?.name === '测试签名名称',
           removedFromCatalog: !afterDelete.templates.some((template) => template.id === importedTemplate.id)
         }
       };
@@ -1135,15 +1307,27 @@ app.whenReady().then(() => {
       properties: ['openFile'],
       filters: [{ name: '邮件签名', extensions: ['oft', 'html', 'htm'] }]
     });
-    return result.canceled ? null : importTemplate(result.filePaths[0]);
+    if (result.canceled) return null;
+    const inspection = await runWorker('inspect-template', { templatePath: result.filePaths[0] });
+    assertTemplateCanUse(inspection);
+    return importTemplate(result.filePaths[0]);
   });
   ipcMain.handle('templates:delete', (event, id: string) => {
     assertTrustedEvent(event);
     return deleteTemplate(id);
   });
+  ipcMain.handle('templates:rename', (event, id: string, name: string) => {
+    assertTrustedEvent(event);
+    return renameTemplate(id, name);
+  });
   ipcMain.handle('templates:select', (event, id: string) => {
     assertTrustedEvent(event);
     return selectTemplate(id);
+  });
+  ipcMain.handle('templates:inspect', (event, id: string) => {
+    assertTrustedEvent(event);
+    const templatePath = resolveTemplatePath(id);
+    return runWorker('inspect-template', { templatePath });
   });
   ipcMain.handle('templates:open-folder', async (event) => {
     assertTrustedEvent(event);
@@ -1193,11 +1377,21 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('worker:create-drafts', (event, payload: unknown) => {
     assertTrustedEvent(event);
+    if (isDemo) throw new Error('演示模式不会写入 Outlook。请运行正式版并选择真实 Outlook 账户。');
     const record = requireRecord(payload, '创建草稿参数无效。');
     const templateId = typeof record.templateId === 'string' ? record.templateId : '';
     const templatePath = resolveTemplatePath(templateId);
     const { templateId: _templateId, ...workerPayload } = record;
     return runWorker('create-drafts', { ...workerPayload, templatePath, validationPolicy: getValidationPolicy().rules });
+  });
+  ipcMain.handle('worker:test-signature', (event, payload: unknown) => {
+    assertTrustedEvent(event);
+    if (isDemo) throw new Error('演示模式不会写入 Outlook。请运行正式版并选择真实 Outlook 账户。');
+    const record = requireRecord(payload, '创建签名测试草稿参数无效。');
+    const templateId = typeof record.templateId === 'string' ? record.templateId : '';
+    const templatePath = resolveTemplatePath(templateId);
+    const { templateId: _templateId, ...workerPayload } = record;
+    return runWorker('test-signature', { ...workerPayload, templatePath });
   });
   ipcMain.handle('window:minimize', (event) => {
     assertTrustedEvent(event);

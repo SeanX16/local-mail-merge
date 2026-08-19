@@ -43,6 +43,7 @@ import type {
   DraftCreationResponse,
   MailRecord,
   OutlookAccount,
+  SignatureInspection,
   TemplateState,
   ValidationPolicyState,
   ValidationRuleId,
@@ -67,6 +68,23 @@ const previewTemplateState: TemplateState = {
     source: 'bundled'
   }],
   selectedTemplateId: 'bundled:company_signature.sample.html'
+};
+
+const previewSignatureInspection: SignatureInspection = {
+  kind: 'html',
+  previewHtml: `<div style="font-family:'Microsoft YaHei UI','Segoe UI',sans-serif;color:#374151">
+    <p>Best regards,</p>
+    <p><strong>Example Talent Team</strong><br>Example Company<br><a href="https://example.test">example.test</a></p>
+  </div>`,
+  previewComplete: true,
+  subject: '',
+  to: '',
+  cc: '',
+  bcc: '',
+  inlineAttachments: [],
+  regularAttachments: [],
+  issues: [],
+  canUse: true
 };
 
 const initialDemoBatch = applyValidationPolicyToDemoBatch(defaultValidationPolicy);
@@ -117,6 +135,9 @@ export function App() {
   const [accountError, setAccountError] = useState('');
   const [templateState, setTemplateState] = useState<TemplateState>(previewTemplateState);
   const [selectedTemplateId, setSelectedTemplateId] = useState(previewTemplateState.selectedTemplateId);
+  const [signatureInspection, setSignatureInspection] = useState<SignatureInspection | null>(() => window.desktopApi ? null : previewSignatureInspection);
+  const [signatureInspectionLoading, setSignatureInspectionLoading] = useState(Boolean(window.desktopApi));
+  const [signatureInspectionError, setSignatureInspectionError] = useState('');
   const [statusMode, setStatusMode] = useState<StatusMode>('all');
   const [globalFilter, setGlobalFilter] = useState('');
   const [debouncedGlobalFilter, setDebouncedGlobalFilter] = useState('');
@@ -176,6 +197,34 @@ export function App() {
   useEffect(() => {
     applyAppearanceSettings(appearanceSettings);
   }, [appearanceSettings]);
+
+  useEffect(() => {
+    if (!selectedTemplateId) {
+      setSignatureInspection(null);
+      setSignatureInspectionLoading(false);
+      setSignatureInspectionError('');
+      return;
+    }
+    if (!window.desktopApi) {
+      setSignatureInspection(previewSignatureInspection);
+      setSignatureInspectionLoading(false);
+      setSignatureInspectionError('');
+      return;
+    }
+
+    let active = true;
+    setSignatureInspectionLoading(true);
+    setSignatureInspectionError('');
+    window.desktopApi.inspectTemplate(selectedTemplateId)
+      .then((inspection) => { if (active) setSignatureInspection(inspection); })
+      .catch((error) => {
+        if (!active) return;
+        setSignatureInspection(null);
+        setSignatureInspectionError(safeMessage(error));
+      })
+      .finally(() => { if (active) setSignatureInspectionLoading(false); });
+    return () => { active = false; };
+  }, [selectedTemplateId]);
 
   useEffect(() => {
     if (!settingsState) return;
@@ -346,6 +395,7 @@ export function App() {
   const activeRecord = batch.records.find((record) => record.id === activeRecordId) ?? batch.records[0];
   const selectedRecords = batch.records.filter((record) => rowSelection[record.id] && record.canCreate);
   const selectedWarningRecords = selectedRecords.filter((record) => record.validationKind === 'review');
+  const signatureWarningCount = signatureInspection?.issues.filter((issue) => issue.severity === 'warning').length ?? 0;
   const aggregate = batch.aggregate ?? {
     total: batch.records.length,
     creatable: batch.records.filter((record) => record.canCreate).length,
@@ -539,12 +589,48 @@ export function App() {
     }
   }
 
+  async function renameTemplate(id: string, name: string) {
+    if (!window.desktopApi) {
+      setTemplateState((current) => ({
+        ...current,
+        templates: current.templates.map((template) => template.id === id ? { ...template, name } : template)
+      }));
+      return;
+    }
+    try {
+      const state = await window.desktopApi.renameTemplate(id, name);
+      setTemplateState(state);
+      toast.success('签名名称已更新。');
+    } catch (error) {
+      toast.error(safeMessage(error));
+      throw error;
+    }
+  }
+
   async function openTemplateFolder() {
     if (!window.desktopApi) {
       toast.info('该目录只在 Electron 打包版中可用。');
       return;
     }
     try { await window.desktopApi.openTemplateFolder(); } catch (error) { toast.error(safeMessage(error)); }
+  }
+
+  async function createSignatureTestDraft() {
+    if (!window.desktopApi) {
+      toast.info('演示模式不会写入 Outlook。');
+      return;
+    }
+    const account = accounts.find((item) => item.storeId === selectedAccountId);
+    if (!account) { toast.error('请先在主界面选择 Outlook 发件账户。'); return; }
+    if (!selectedTemplateId || !signatureInspection?.canUse) { toast.error('请先选择通过检查的邮件签名。'); return; }
+    try {
+      await window.desktopApi.createSignatureTestDraft({ templateId: selectedTemplateId, account });
+      toast.success('无收件人的签名测试草稿已保存。', {
+        description: '请在所选 Outlook 账户的草稿箱中检查文字、Logo、链接和排版，确认后删除，不要发送。'
+      });
+    } catch (error) {
+      toast.error(safeMessage(error));
+    }
   }
 
   async function createDrafts() {
@@ -558,6 +644,10 @@ export function App() {
     if (!account) { toast.error('请先选择 Outlook 发件账户。'); return; }
     if (!selectedTemplateId || !templateState.templates.some((template) => template.id === selectedTemplateId)) {
       toast.error('请先在设置中导入并选择邮件签名。');
+      return;
+    }
+    if (!signatureInspection?.canUse || signatureInspectionLoading || signatureInspectionError) {
+      toast.error('当前邮件签名尚未通过检查，请先在设置中处理签名问题。');
       return;
     }
     setCreating(true);
@@ -632,6 +722,9 @@ export function App() {
         onAccountChange={setSelectedAccountId}
         templateState={templateState}
         selectedTemplateId={selectedTemplateId}
+        signatureInspection={signatureInspection}
+        signatureInspectionLoading={signatureInspectionLoading}
+        signatureInspectionError={signatureInspectionError}
         onTemplateChange={(id) => void chooseTemplate(id)}
         onImportPackage={() => void importPackage()}
         statusMode={statusMode}
@@ -669,13 +762,20 @@ export function App() {
           </AlertDialogHeader>
           <dl className="confirm-details">
             <div><dt>发件账户</dt><dd>{accounts.find((item) => item.storeId === selectedAccountId)?.smtpAddress}</dd></div>
-            <div><dt>邮件签名</dt><dd>{templateState.templates.find((template) => template.id === selectedTemplateId)?.fileName ?? '未选择'}</dd></div>
+            <div><dt>邮件签名</dt><dd>{templateState.templates.find((template) => template.id === selectedTemplateId)?.name ?? '未选择'}</dd></div>
           </dl>
           {selectedWarningRecords.length ? (
             <Alert className="confirm-warning">
               <TriangleAlert aria-hidden="true" />
               <AlertTitle>{selectedWarningRecords.length} 条记录含警告</AlertTitle>
               <AlertDescription>仍会创建草稿，请在 Outlook 中补充或确认后再手动发送。</AlertDescription>
+            </Alert>
+          ) : null}
+          {signatureWarningCount ? (
+            <Alert className="confirm-warning">
+              <TriangleAlert aria-hidden="true" />
+              <AlertTitle>邮件签名含 {signatureWarningCount} 项提示</AlertTitle>
+              <AlertDescription>草稿仍可创建；请先用无收件人的测试草稿确认图片、链接和最终排版。</AlertDescription>
             </Alert>
           ) : null}
           <AlertDialogFooter>
@@ -691,14 +791,21 @@ export function App() {
       {settingsTab ? (
         <SettingsDialog
           templateState={templateState}
+          selectedTemplateId={selectedTemplateId}
+          signatureInspection={signatureInspection}
+          signatureInspectionLoading={signatureInspectionLoading}
+          signatureInspectionError={signatureInspectionError}
           accounts={accounts}
+          selectedAccountId={selectedAccountId}
           accountsLoading={accountsLoading}
           accountError={accountError}
           initialTab={settingsTab}
           onSelectTemplate={chooseTemplate}
           onImportTemplate={importNewTemplate}
+          onRenameTemplate={renameTemplate}
           onDeleteTemplate={removeTemplate}
           onOpenTemplateFolder={openTemplateFolder}
+          onCreateSignatureTestDraft={createSignatureTestDraft}
           onRefreshAccounts={() => refreshAccounts(true)}
           validationPolicy={validationPolicy}
           onMoveValidationRule={moveValidationRule}

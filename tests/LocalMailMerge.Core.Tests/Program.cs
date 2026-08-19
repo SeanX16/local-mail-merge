@@ -10,7 +10,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("历史成功记录触发重复保护", TestAuditDeduplicationAsync),
     ("纯文本正文转换为 Outlook 兼容段落", TestPlainTextBodyFormattingAsync),
     ("CSV 导入保留动态字段", TestCsvImportAsync),
-    ("XLSX 自动选择人员明细工作表", TestXlsxImportAsync)
+    ("XLSX 自动选择人员明细工作表", TestXlsxImportAsync),
+    ("安全 HTML 签名可用并按正文在前组合", TestSafeSignatureHtmlAsync),
+    ("危险 HTML 签名被拦截", TestUnsafeSignatureHtmlAsync),
+    ("不可靠图片来源产生签名警告", TestSignatureImageWarningsAsync),
+    ("HTML 内嵌图片计入资源数量", TestEmbeddedSignatureImageAsync)
 };
 
 var passed = 0;
@@ -155,6 +159,51 @@ static async Task TestXlsxImportAsync()
     True(batch.Messages[0].Validation.Issues.Any(issue => issue.Code == "missing_body" && issue.Severity == ValidationIssueSeverity.Blocking), "generic XLSX missing-body blocker");
     True(batch.Messages[0].Validation.Issues.All(issue => issue.Code is not "review_not_approved" and not "missing_content_hash" and not "missing_personalization_source"), "default-pass rules should not warn");
     File.Delete(path);
+}
+
+static Task TestSafeSignatureHtmlAsync()
+{
+    const string signature = "<html><body><p>Best regards,</p><p><strong>Example Team</strong></p></body></html>";
+    var inspection = SignatureTemplateInspector.FromHtml("html", signature, previewComplete: true);
+    True(inspection.CanUse, "safe signature should be usable");
+    Equal(0, inspection.Issues.Count, "safe signature issues");
+    True(inspection.PreviewComplete, "safe HTML preview should be complete");
+
+    var combined = SignatureTemplateInspector.CombineHtml("<p>Hello Example Person</p>", signature);
+    var messageIndex = combined.IndexOf("Hello Example Person", StringComparison.Ordinal);
+    var signatureIndex = combined.IndexOf("Best regards", StringComparison.Ordinal);
+    True(messageIndex >= 0 && signatureIndex > messageIndex, "message should appear before signature");
+    return Task.CompletedTask;
+}
+
+static Task TestUnsafeSignatureHtmlAsync()
+{
+    const string signature = "<div onclick=\"alert(1)\"><script>alert(1)</script><a href=\"java&#x73;cript:alert(1)\">Unsafe</a></div>";
+    var inspection = SignatureTemplateInspector.FromHtml("html", signature, previewComplete: true);
+    True(!inspection.CanUse, "unsafe signature should be blocked");
+    True(inspection.Issues.Any(issue => issue.Code == "unsafe_element" && issue.Severity == "blocking"), "script blocker missing");
+    True(inspection.Issues.Any(issue => issue.Code == "unsafe_event_handler" && issue.Severity == "blocking"), "event blocker missing");
+    True(inspection.Issues.Any(issue => issue.Code == "unsafe_uri" && issue.Severity == "blocking"), "unsafe URI blocker missing");
+    return Task.CompletedTask;
+}
+
+static Task TestSignatureImageWarningsAsync()
+{
+    const string signature = "<div><img src=\"https://example.test/logo.png\"><img src=\"images/local-logo.png\"></div>";
+    var inspection = SignatureTemplateInspector.FromHtml("html", signature, previewComplete: true);
+    True(inspection.CanUse, "image reliability warnings should not block the signature");
+    True(inspection.Issues.Any(issue => issue.Code == "remote_image" && issue.Severity == "warning"), "remote-image warning missing");
+    True(inspection.Issues.Any(issue => issue.Code == "unresolved_image" && issue.Severity == "warning"), "relative-image warning missing");
+    return Task.CompletedTask;
+}
+
+static Task TestEmbeddedSignatureImageAsync()
+{
+    const string signature = "<div><img src=\"data:image/png;base64,iVBORw0KGgo=\" alt=\"Example logo\"></div>";
+    var inspection = SignatureTemplateInspector.FromHtml("html", signature, previewComplete: true);
+    Equal(1, inspection.InlineAttachments.Count, "embedded HTML image count");
+    True(!inspection.Issues.Any(issue => issue.Code == "unresolved_image"), "embedded HTML image should be resolved");
+    return Task.CompletedTask;
 }
 
 static void CreateMinimalXlsx(string path)

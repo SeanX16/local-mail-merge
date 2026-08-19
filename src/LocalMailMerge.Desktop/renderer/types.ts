@@ -81,6 +81,31 @@ export interface TemplateState {
   selectedTemplateId: string;
 }
 
+export interface SignatureInspectionIssue {
+  code: string;
+  message: string;
+  severity: 'warning' | 'blocking';
+}
+
+export interface SignatureInspection {
+  kind: 'html' | 'oft';
+  previewHtml: string;
+  previewComplete: boolean;
+  subject: string;
+  to: string;
+  cc: string;
+  bcc: string;
+  inlineAttachments: string[];
+  regularAttachments: string[];
+  issues: SignatureInspectionIssue[];
+  canUse: boolean;
+}
+
+export interface SignatureTestDraftResponse {
+  outlookEntryId: string;
+  inspection: SignatureInspection;
+}
+
 export type ValidationRuleId =
   | 'invalid_email'
   | 'already_created'
@@ -145,14 +170,17 @@ export interface DesktopApi {
   listAccounts(): Promise<OutlookAccount[]>;
   getTemplateState(): Promise<TemplateState>;
   importTemplate(): Promise<TemplateState | null>;
+  renameTemplate(id: string, name: string): Promise<TemplateState>;
   deleteTemplate(id: string): Promise<TemplateState>;
   selectTemplate(id: string): Promise<TemplateState>;
+  inspectTemplate(id: string): Promise<SignatureInspection>;
   openTemplateFolder(): Promise<void>;
   getValidationPolicy(): Promise<ValidationPolicyState>;
   saveValidationPolicy(value: ValidationPolicyState): Promise<ValidationPolicyState>;
   getAppearanceSettings(): Promise<AppearanceSettingsState>;
   saveAppearanceSettings(value: AppearanceSettingsState): Promise<AppearanceSettingsState>;
   createDrafts(payload: CreateDraftsRequest): Promise<DraftCreationResponse>;
+  createSignatureTestDraft(payload: { templateId: string; account: OutlookAccount }): Promise<SignatureTestDraftResponse>;
   showReport(reportPath: string): Promise<void>;
   minimize(): Promise<void>;
   toggleMaximize(): Promise<boolean>;

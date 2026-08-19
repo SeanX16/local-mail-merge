@@ -27,6 +27,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -44,10 +45,12 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { WindowTitleBar } from '@/components/window/WindowTitleBar';
+import { SignaturePreview } from '../../SignaturePreview';
 import type {
   BatchViewModel,
   MailRecord,
   OutlookAccount,
+  SignatureInspection,
   TemplateState,
   ValidationRuleId
 } from '../../types';
@@ -94,13 +97,48 @@ export interface WorkspaceAggregate {
 }
 
 const TABLE_ROW_HEIGHT = 32;
+const PREVIEW_FIELD_STORAGE_KEY = 'local-mail-merge.preview-secondary-field';
+
+function readStoredPreviewFieldKey(): string {
+  try {
+    return window.localStorage.getItem(PREVIEW_FIELD_STORAGE_KEY) ?? 'target_role';
+  } catch {
+    return 'target_role';
+  }
+}
+
+function defaultPreviewFieldKey(fields: BatchViewModel['fields']): string {
+  return fields.find((field) => field.key === 'target_role')?.key ?? fields[0]?.key ?? '';
+}
+
+function previewFieldValue(record: MailRecord, fieldKey: string): string {
+  const importedValue = record.values[fieldKey];
+  if (importedValue?.trim()) return importedValue;
+  if (fieldKey === 'recipient_name') return record.recipientName;
+  if (fieldKey === 'recipient_email') return record.recipientEmail;
+  if (fieldKey === 'subject') return record.subject;
+  if (fieldKey === 'target_role') return record.targetRole;
+  return '';
+}
 
 const MailPreview = memo(function MailPreview({
   activeRecord,
-  validationRuleOrder
+  fields,
+  previewFieldKey,
+  onPreviewFieldChange,
+  validationRuleOrder,
+  signatureInspection,
+  signatureInspectionLoading,
+  signatureInspectionError
 }: {
   activeRecord: MailRecord | undefined;
+  fields: BatchViewModel['fields'];
+  previewFieldKey: string;
+  onPreviewFieldChange: (fieldKey: string) => void;
   validationRuleOrder: ValidationRuleId[];
+  signatureInspection: SignatureInspection | null;
+  signatureInspectionLoading: boolean;
+  signatureInspectionError: string;
 }) {
   const sanitizedBody = useMemo(() => activeRecord ? bodyMarkup(activeRecord) : '', [activeRecord]);
   const activeValidationIssues = useMemo(() => {
@@ -115,6 +153,8 @@ const MailPreview = memo(function MailPreview({
       (orderIndex.get(left.code as ValidationRuleId) ?? Number.MAX_SAFE_INTEGER)
       - (orderIndex.get(right.code as ValidationRuleId) ?? Number.MAX_SAFE_INTEGER));
   }, [activeRecord, validationRuleOrder]);
+  const selectedPreviewField = fields.find((field) => field.key === previewFieldKey);
+  const selectedPreviewValue = activeRecord ? previewFieldValue(activeRecord, previewFieldKey) : '';
 
   return (
     <aside className="preview-pane">
@@ -125,12 +165,36 @@ const MailPreview = memo(function MailPreview({
               <p className="preview-eyebrow">邮件预览</p>
               <h2>{activeRecord.recipientName}</h2>
             </div>
-            <span className="preview-position">{activeRecord.targetRole || '未填写岗位'}</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  className="preview-position"
+                  aria-label={`选择右上角显示字段，当前为${selectedPreviewField?.label ?? '未选择'}`}
+                  data-testid="preview-field-trigger"
+                >
+                  <span className="truncate">{selectedPreviewValue || '—'}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56" data-testid="preview-field-menu">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>右上角显示字段</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup value={previewFieldKey} onValueChange={onPreviewFieldChange}>
+                    {fields.map((field) => (
+                      <DropdownMenuRadioItem key={field.key} value={field.key} data-field-key={field.key}>
+                        {field.label}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </header>
           <dl className="preview-metadata">
             <div><dt>收件人</dt><dd>{activeRecord.recipientEmail}</dd></div>
             <div><dt>主题</dt><dd>{activeRecord.subject || '未填写主题'}</dd></div>
-            <div><dt>附件</dt><dd>Offer_Letter_{activeRecord.recipientName.replaceAll(' ', '_')}.pdf</dd></div>
           </dl>
           {activeValidationIssues.length ? (
             <div className="validation-issue-stack" aria-label="校验提示">
@@ -154,10 +218,12 @@ const MailPreview = memo(function MailPreview({
           ) : null}
           <Separator />
           <article className="mail-body" dangerouslySetInnerHTML={{ __html: sanitizedBody }} />
-          <div className="mail-signature">
-            <p>Best regards,</p>
-            <p>Talent Acquisition Team<br />Example Company</p>
-          </div>
+          <SignaturePreview
+            inspection={signatureInspection}
+            loading={signatureInspectionLoading}
+            error={signatureInspectionError}
+            compact
+          />
         </>
       ) : (
         <Empty className="h-full border-0">
@@ -352,6 +418,9 @@ export function MailMergeWorkspace({
   onAccountChange,
   templateState,
   selectedTemplateId,
+  signatureInspection,
+  signatureInspectionLoading,
+  signatureInspectionError,
   onTemplateChange,
   onImportPackage,
   statusMode,
@@ -385,6 +454,9 @@ export function MailMergeWorkspace({
   onAccountChange: (id: string) => void;
   templateState: TemplateState;
   selectedTemplateId: string;
+  signatureInspection: SignatureInspection | null;
+  signatureInspectionLoading: boolean;
+  signatureInspectionError: string;
   onTemplateChange: (id: string) => void;
   onImportPackage: () => void;
   statusMode: StatusMode;
@@ -411,11 +483,29 @@ export function MailMergeWorkspace({
 }) {
   const [fieldManagerOpen, setFieldManagerOpen] = useState(fieldManagerDefaultOpen);
   const [statusMenuOpen, setStatusMenuOpen] = useState(statusMenuDefaultOpen);
+  const [previewFieldKey, setPreviewFieldKey] = useState(readStoredPreviewFieldKey);
   useEffect(() => {
     if (statusMenuDefaultOpen) setStatusMenuOpen(true);
   }, [statusMenuDefaultOpen]);
+  useEffect(() => {
+    if (batch.fields.some((field) => field.key === previewFieldKey)) return;
+    setPreviewFieldKey(defaultPreviewFieldKey(batch.fields));
+  }, [batch.fields, previewFieldKey]);
+  useEffect(() => {
+    if (!previewFieldKey) return;
+    try {
+      window.localStorage.setItem(PREVIEW_FIELD_STORAGE_KEY, previewFieldKey);
+    } catch {
+      // The selector still works for this session when storage is unavailable.
+    }
+  }, [previewFieldKey]);
   const visibleFieldCount = batch.fields.filter((field) => columnVisibility[field.key] !== false).length;
-  const canCreate = selectedCount > 0 && Boolean(selectedAccountId) && Boolean(selectedTemplateId);
+  const canCreate = selectedCount > 0
+    && Boolean(selectedAccountId)
+    && Boolean(selectedTemplateId)
+    && Boolean(signatureInspection?.canUse)
+    && !signatureInspectionLoading
+    && !signatureInspectionError;
 
   return (
     <div className="app-shell">
@@ -522,7 +612,16 @@ export function MailMergeWorkspace({
             <VirtualizedMailTable table={table} activeRecordId={selectedRowState ? table.getRowModel().rows[1]?.original.id : activeRecord?.id} onActivateRecord={onActivateRecord} />
           </div>
 
-          <MailPreview activeRecord={activeRecord} validationRuleOrder={validationRuleOrder} />
+          <MailPreview
+            activeRecord={activeRecord}
+            fields={batch.fields}
+            previewFieldKey={previewFieldKey}
+            onPreviewFieldChange={setPreviewFieldKey}
+            validationRuleOrder={validationRuleOrder}
+            signatureInspection={signatureInspection}
+            signatureInspectionLoading={signatureInspectionLoading}
+            signatureInspectionError={signatureInspectionError}
+          />
         </section>
 
         <footer className="footer-bar">
