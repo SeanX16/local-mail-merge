@@ -190,6 +190,9 @@ export interface DesktopApi {
   close(): Promise<void>;
   setModalState(active: boolean): Promise<boolean>;
   openOutlook(): Promise<void>;
+  openAuthorProfile(): Promise<void>;
+  openProjectLicense(): Promise<void>;
+  openProjectRepository(): Promise<void>;
 }
 
 declare global {

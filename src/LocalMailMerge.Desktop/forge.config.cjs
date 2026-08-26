@@ -1,9 +1,12 @@
+const packageMetadata = require('./package.json');
+
 module.exports = {
   packagerConfig: {
     asar: true,
     name: 'Local Mail Merge',
     executableName: 'LocalMailMerge',
-    appBundleId: 'com.hkrc.localmailmerge',
+    appBundleId: 'com.seanx16.localmailmerge',
+    appCopyright: 'Copyright © 2026 Sean.',
     ignore: [
       /^\/node_modules(\/|$)/,
       /^\/renderer(\/|$)/,
@@ -26,7 +29,7 @@ module.exports = {
       name: '@electron-forge/maker-squirrel',
       config: {
         name: 'LocalMailMerge',
-        setupExe: 'LocalMailMergeSetup.exe'
+        setupExe: `Local-Mail-Merge-v${packageMetadata.version}-Setup.exe`
       }
     },
     {

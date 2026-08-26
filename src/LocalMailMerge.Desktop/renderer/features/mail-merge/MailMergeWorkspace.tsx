@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { WindowTitleBar } from '@/components/window/WindowTitleBar';
+import { AboutDialog } from '../../AboutDialog';
 import { SignaturePreview } from '../../SignaturePreview';
 import type {
   BatchViewModel,
@@ -483,6 +484,7 @@ export function MailMergeWorkspace({
 }) {
   const [fieldManagerOpen, setFieldManagerOpen] = useState(fieldManagerDefaultOpen);
   const [statusMenuOpen, setStatusMenuOpen] = useState(statusMenuDefaultOpen);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [previewFieldKey, setPreviewFieldKey] = useState(readStoredPreviewFieldKey);
   useEffect(() => {
     if (statusMenuDefaultOpen) setStatusMenuOpen(true);
@@ -557,7 +559,15 @@ export function MailMergeWorkspace({
               action={{ label: '添加新签名', onSelect: () => onOpenSettings('signatures') }}
             />
           </div>
-          <Button variant="ghost" size="icon" aria-label="关于"><Info /></Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="关于"
+            data-testid="about-trigger"
+            onClick={() => setAboutOpen(true)}
+          >
+            <Info />
+          </Button>
           <Button variant="ghost" size="icon" aria-label="设置" onClick={() => onOpenSettings(DEFAULT_SETTINGS_TAB)}><Settings /></Button>
         </section>
 
@@ -630,6 +640,7 @@ export function MailMergeWorkspace({
           <Button className="create-button" size="lg" disabled={!canCreate} onClick={onCreateDrafts}>创建所选草稿</Button>
         </footer>
       </main>
+      <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
     </div>
   );
 }

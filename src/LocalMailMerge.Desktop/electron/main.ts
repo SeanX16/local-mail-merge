@@ -76,10 +76,16 @@ function assertTemplateCanUse(value: unknown): void {
 function resolveLocalReportPath(value: unknown): string {
   if (typeof value !== 'string' || !value || value.length > 4096) throw new Error('结果报告路径无效。');
   const localAppData = process.env.LOCALAPPDATA ?? path.join(path.dirname(app.getPath('appData')), 'Local');
-  const reportRoot = path.resolve(localAppData, 'HKRC', 'LocalMailMerge', 'reports');
+  const reportRoots = [
+    path.resolve(localAppData, 'SeanX16', 'LocalMailMerge', 'reports'),
+    path.resolve(localAppData, 'HKRC', 'LocalMailMerge', 'reports')
+  ];
   const reportPath = path.resolve(value);
-  const relative = path.relative(reportRoot, reportPath);
-  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) || path.extname(reportPath).toLowerCase() !== '.json') {
+  const isTrustedReportPath = reportRoots.some((reportRoot) => {
+    const relative = path.relative(reportRoot, reportPath);
+    return Boolean(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  });
+  if (!isTrustedReportPath || path.extname(reportPath).toLowerCase() !== '.json') {
     throw new Error('只能定位 Local Mail Merge 生成的结果报告。');
   }
   if (!fs.existsSync(reportPath) || !fs.statSync(reportPath).isFile()) throw new Error('结果报告不存在或已被移动。');
@@ -209,6 +215,7 @@ function createWindow(): void {
   const selectedRowCapture = captureState === 'selected-row';
   const shortColumnsCapture = captureState === 'short-columns';
   const creationResultCapture = captureState === 'creation-result';
+  const aboutCapture = captureState === 'about';
   const settingsCaptureValue = captureState === 'outlook'
     ? 'outlook'
     : captureState === 'appearance' || captureState === 'appearance-close-active' || captureState === 'settings'
@@ -330,6 +337,30 @@ function createWindow(): void {
         `) as boolean;
         if (!resultDialogOpened) throw new Error('草稿创建结果弹窗验收截图未能打开。');
         await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      if (aboutCapture) {
+        mainWindow!.show();
+        const aboutOpened = await mainWindow!.webContents.executeJavaScript(`
+          (async () => {
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const trigger = document.querySelector('[data-testid="about-trigger"]');
+            trigger?.dispatchEvent(
+              new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true })
+            );
+            trigger?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+            const deadline = performance.now() + 2000;
+            while (!document.querySelector('[data-testid="about-dialog"]') && performance.now() < deadline) {
+              await wait(40);
+            }
+            return Boolean(document.querySelector('[data-testid="about-dialog"]'));
+          })()
+        `) as boolean;
+        if (!aboutOpened) throw new Error('关于页面验收截图未能打开。');
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const aboutStillOpen = await mainWindow!.webContents.executeJavaScript(
+          `Boolean(document.querySelector('[data-testid="about-dialog"][data-state="open"]'))`
+        ) as boolean;
+        if (!aboutStillOpen) throw new Error('关于页面在截图前意外关闭。');
       }
       if (statusMenuCapture) {
         await mainWindow!.webContents.executeJavaScript(`
@@ -1418,6 +1449,18 @@ app.whenReady().then(() => {
   ipcMain.handle('shell:open-outlook', async (event) => {
     assertTrustedEvent(event);
     await shell.openExternal('outlook:');
+  });
+  ipcMain.handle('shell:open-author-profile', async (event) => {
+    assertTrustedEvent(event);
+    await shell.openExternal('https://github.com/SeanX16');
+  });
+  ipcMain.handle('shell:open-project-repository', async (event) => {
+    assertTrustedEvent(event);
+    await shell.openExternal('https://github.com/SeanX16/local-mail-merge');
+  });
+  ipcMain.handle('shell:open-project-license', async (event) => {
+    assertTrustedEvent(event);
+    await shell.openExternal('https://github.com/SeanX16/local-mail-merge/blob/main/LICENSE');
   });
   ipcMain.handle('shell:show-report', (event, reportPath: string) => {
     assertTrustedEvent(event);

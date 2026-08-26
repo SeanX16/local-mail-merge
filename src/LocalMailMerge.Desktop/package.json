@@ -1,9 +1,15 @@
 {
   "name": "local-mail-merge-desktop",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "private": true,
-  "author": "HKRC",
-  "description": "Local Mail Merge Electron desktop client",
+  "author": "Sean",
+  "license": "MIT",
+  "homepage": "https://github.com/SeanX16/local-mail-merge",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SeanX16/local-mail-merge.git"
+  },
+  "description": "Review recipient data and save editable drafts to classic Outlook",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
