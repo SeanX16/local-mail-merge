@@ -1,5 +1,3 @@
-const packageMetadata = require('./package.json');
-
 module.exports = {
   packagerConfig: {
     asar: true,
@@ -25,13 +23,6 @@ module.exports = {
     ]
   },
   makers: [
-    {
-      name: '@electron-forge/maker-squirrel',
-      config: {
-        name: 'LocalMailMerge',
-        setupExe: `Local-Mail-Merge-v${packageMetadata.version}-Setup.exe`
-      }
-    },
     {
       name: '@electron-forge/maker-zip',
       platforms: ['win32']
