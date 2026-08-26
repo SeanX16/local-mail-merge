@@ -9,14 +9,21 @@ public sealed class AuditStore
 
     public AuditStore(string? baseDirectory = null)
     {
-        BaseDirectory = baseDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "HKRC",
-            "LocalMailMerge");
+        BaseDirectory = baseDirectory ?? ResolveDefaultBaseDirectory();
     }
 
     public string BaseDirectory { get; }
     public string AuditPath => Path.Combine(BaseDirectory, "audit.jsonl");
+
+    private static string ResolveDefaultBaseDirectory()
+    {
+        var localApplicationData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var currentDirectory = Path.Combine(localApplicationData, "SeanX16", "LocalMailMerge");
+        var legacyDirectory = Path.Combine(localApplicationData, "HKRC", "LocalMailMerge");
+        return Directory.Exists(currentDirectory) || !Directory.Exists(legacyDirectory)
+            ? currentDirectory
+            : legacyDirectory;
+    }
 
     public IReadOnlySet<string> LoadSuccessfulKeys()
     {

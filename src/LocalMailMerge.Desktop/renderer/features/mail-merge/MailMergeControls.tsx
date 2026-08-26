@@ -90,7 +90,7 @@ export function CommandDropdown({
           id={id}
           type="button"
           variant="outline"
-          className="command-select"
+          className="command-select focus-visible:border-border focus-visible:ring-0"
           data-testid={`${kind}-dropdown-trigger`}
         >
           <span className="truncate">{selected?.label ?? placeholder}</span>

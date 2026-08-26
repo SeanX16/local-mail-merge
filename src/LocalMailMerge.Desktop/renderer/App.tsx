@@ -283,7 +283,7 @@ export function App() {
     const previewRecords = demoBatch.records.slice(0, 2);
     const timer = window.setTimeout(() => setCreationResult({
       response: {
-        reportPath: 'C:\\Users\\Example\\AppData\\Local\\HKRC\\LocalMailMerge\\reports\\demo_batch_20260813_153000.json',
+        reportPath: 'C:\\Users\\Example\\AppData\\Local\\SeanX16\\LocalMailMerge\\reports\\demo_batch_20260813_153000.json',
         summary: { success: 1, skipped: 0, failed: 1 },
         results: [
           { personId: previewRecords[0]?.personId ?? 'demo_001', outcome: 'Success', outlookEntryId: 'demo-entry', errorCode: '', errorMessage: '' },

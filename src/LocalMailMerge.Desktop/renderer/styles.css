@@ -361,6 +361,22 @@ body { font-size: 13px; line-height: 1.45; }
 .confirm-details dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .confirm-warning { background: var(--warning-soft); color: color-mix(in oklch, var(--warning) 82%, black); }
 
+.about-dialog { width: min(420px, calc(100vw - 48px)); max-width: 420px !important; gap: 0; padding: 38px 36px 30px; }
+.about-identity { display: grid; justify-items: center; gap: 14px; text-align: center; }
+.about-logo { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 16px; background: color-mix(in oklch, var(--primary) 12%, transparent); color: var(--primary); }
+.about-logo svg { width: 29px; height: 29px; }
+.about-header { display: grid; justify-items: center; gap: 4px; text-align: center; }
+.about-header [data-slot="dialog-title"] { font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
+.about-header [data-slot="dialog-description"] { font-size: 13px; }
+.about-author { display: flex; align-items: baseline; justify-content: center; gap: 4px; margin: 28px 0 0; color: var(--foreground); font-size: 13px; }
+.about-inline-link { height: auto; padding: 0; font-size: inherit; font-weight: 600; }
+.about-legal { display: grid; justify-items: center; gap: 3px; margin: 15px 0 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.45; text-align: center; }
+.about-separator { margin: 24px 0 18px; }
+.about-links { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.about-link { height: auto; gap: 5px; padding: 0; font-size: 12px; }
+.about-link svg { width: 12px; height: 12px; }
+.about-link-separator { height: 14px; }
+
 .creation-result-dialog { width: min(620px, calc(100vw - 48px)); max-width: 620px !important; max-height: min(680px, calc(100vh - 48px)); grid-template-rows: auto auto minmax(0, auto) auto auto auto; gap: 12px; overflow: hidden; }
 .creation-result-header { padding-right: 24px; }
 .creation-result-counts { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 3px; }

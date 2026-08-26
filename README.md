@@ -1,117 +1,142 @@
 # Local Mail Merge
 
-面向公司 Windows 电脑的 Outlook 本地草稿工具。项目目标是读取外部已经审核好的候选人名单、
-收件地址和个性化邮件内容，在不调用 AI 的前提下批量创建可人工检查的 Outlook 草稿。
+Local Mail Merge 是一款 Windows 桌面工具，用来把已经整理好的收件人名单和邮件内容变成 Outlook 草稿。
 
-## 已确定的路线
+它不会自动发送邮件。你可以先在应用里筛选、预览和确认，再到 Outlook 草稿箱逐封检查并手动发送。
 
-- 公司电脑只负责校验、预览和创建草稿；
-- Outlook 本地自动化是正式主路线；
-- 批量流程只调用 `Save()`，不调用 `Display()` 或 `Send()`；
-- `.eml` 仅作为兼容或应急交付方式；
-- Microsoft Graph 因公司邮箱无法登录，不进入当前实现。
+## 下载
 
-## 当前状态
+请到 [GitHub Releases](https://github.com/SeanX16/local-mail-merge/releases/latest) 下载最新版。正式版提供两种形式：
 
-方案 A2 的 Electron 桌面版已经实现。主界面使用 React + TypeScript，保留全部导入记录，支持：
+| 版本 | 适合谁 | 怎么使用 |
+|---|---|---|
+| 安装版 | 打算长期放在这台电脑上使用 | 下载 `Local-Mail-Merge-v1.0.0-Setup.exe`，双击安装 |
+| 便携版 | 不想安装，或需要先在工作电脑测试 | 下载 `Local-Mail-Merge-v1.0.0-Portable-win-x64.zip`，完整解压后运行 `LocalMailMerge.exe` |
 
-- 自定义显示字段及拖动排序；
-- 每列独立的 Excel 式多选筛选；
-- 逐行勾选和邮件预览；
-- 导入交接包、显式选择 Outlook 账户、二次确认后批量创建草稿；
-- 从主界面的“邮件签名”下拉框选择应用内签名；
-- 在“设置”中导入、删除和设定默认签名，并重新检测经典 Outlook 账户；
-- 对导入记录执行本地可配置的分级校验：规则可以在“拦截”“警告”和“默认放行”之间移动。
+便携版不是单文件程序，请保留解压后的整个文件夹。两种版本都会把个人设置、已导入签名和去重记录保存在当前
+Windows 用户的 AppData 中。
 
-邮件签名支持 `.oft`、`.html` 和 `.htm`。导入前会检查危险 HTML、预设收件人、普通附件和无法完整预览的
-图片资源；未通过安全检查的文件不会进入签名目录，也不能用于创建草稿。主界面和设置页显示当前所选签名的
-实际内容，不再使用固定的示例落款。为避免预览本身触发外部请求，远程图片、本地图片和 CSS 背景图片不会在
-APP 内加载；可在设置中创建一封无收件人的签名测试草稿，到 Outlook 中确认最终排版和内嵌图片。
+发布页同时提供 SHA-256 校验文件。由于应用目前没有购买代码签名证书，Windows 可能显示 SmartScreen 提示；
+请只使用本仓库 Release 页面下载的文件，并在继续运行前核对校验值。
 
-导入成功后，文件会复制到当前 Windows 用户的应用专用目录，主界面只使用该目录中的已保存项目。内置示例
-签名只用于演示，不能删除；用户导入的签名可在设置中移除，不会删除原始文件。`.oft` 检查和测试草稿依赖
-经典 Outlook；批量创建仍然只调用 `Save()`，不会为了加载签名逐封打开撰写窗口。
+## 使用前准备
 
-任意 Excel、CSV 或 JSON 都可以先导入查看。应用会尽量保留原始字段和全部人员行。邮箱无效、明确禁止
-邮箱无效固定拦截；重复创建默认拦截；主题为空、正文为空、占位符残留和邮箱重复默认警告；尚未批准、没有
-个性化事实和审核后内容发生变化默认放行。除邮箱无效和内部数据完整性保护外，规则可以在设置页拖动调整。
-警告行默认不勾选，但用户可以主动选择并创建草稿，确认框会汇总警告并提醒在 Outlook 中逐封检查。
-选择 Excel 后，程序会先弹出导入设置，根据姓名、邮箱、人员 ID、机构和岗位等表头自动推荐最可能的人员
-明细 Sheet 和字段名称所在行。用户可以修改两个选择，并在确认前预览字段及前 5 条数据；例如人才清单中的
-`Talent List` 会优先于首页 `Summary`。CSV 和 JSON 仍会直接导入。
+- Windows 10 或 Windows 11（64 位）；
+- 已安装并登录经典桌面版 Outlook；
+- Outlook 至少正常启动过一次；
+- 一份 `.xlsx`、`.csv` 或 `.json` 格式的邮件数据。
 
-数据解析、校验和 Outlook COM 操作仍由 C# 本地助手承担。旧的 WinForms 原型保留作行为参考，
-不再作为主界面。兼容性测试脚本继续保留在 `compatibility_test/`。
+目前不支持“新版 Outlook”。如果电脑同时装了两个版本，请确认经典 Outlook 能正常打开账户和草稿箱。
 
-## 公司电脑测试（推荐）
+## 第一次使用
 
-最简单的测试方式是从本私有仓库的 GitHub Releases 下载 Windows x64 免安装 ZIP：
+1. 打开 Local Mail Merge，点击“导入交接包”。
+2. 选择准备好的 Excel、CSV 或 JSON 文件。
+3. 如果导入的是 Excel，确认工作表和表头所在行。应用会先给出推荐，你也可以自己改。
+4. 在顶部选择正确的 Outlook 发件账户和邮件签名。
+5. 使用表格筛选、逐行勾选，并在右侧预览收件人、主题、正文和签名。
+6. 处理红色拦截项；黄色警告项需要你主动勾选并在确认框里再次确认。
+7. 点击“创建所选草稿”。
+8. 打开 Outlook 草稿箱，逐封检查收件人、主题、正文和签名，再手动发送。
 
-1. 下载 ZIP 和同名 SHA-256 校验文件；
-2. 将 ZIP 完整解压到本地目录，不要只复制 `LocalMailMerge.exe`；
-3. 确保经典 Outlook 已安装、已登录并至少启动过一次；
-4. 运行 `LocalMailMerge.exe`，先用随包的 `.test` 虚构数据做单封草稿测试；
-5. 在 Outlook 草稿箱核对后删除这封测试草稿，不要发送。
+应用批量处理时只保存草稿，不会自动发送，也不会为每封邮件打开一个撰写窗口。
 
-该 ZIP 是“免安装目录版”，不是严格意义上不留本地状态的单文件 portable 应用。
-程序会在当前 Windows 用户的 AppData 中保存设置、已导入签名、去重记录和本地报告。
-详细步骤、验收清单和故障处理见
-[`docs/testing/公司电脑快速测试.md`](docs/testing/公司电脑快速测试.md)。
+## 怎样准备邮件数据
 
-## 目录
+最少需要一列能识别为收件邮箱。为了让文件可以直接用于正式工作，建议至少准备这些字段：
 
-```text
-local-mail-merge/
-├─ README.md
-├─ AGENTS.md
-├─ docs/
-│  ├─ requirements/
-│  ├─ architecture/
-│  ├─ decisions/
-│  ├─ handoffs/
-│  └─ design/
-├─ src/
-│  ├─ LocalMailMerge.Desktop/  # Electron + React 主程序
-│  ├─ LocalMailMerge.Worker/   # C# 进程边界与 Outlook 调用
-│  ├─ LocalMailMerge.Core/     # 导入、校验、草稿模型
-│  └─ LocalMailMerge.App/      # 旧 WinForms 参考实现
-└─ compatibility_test/
-```
+- `person_id`：每个人稳定且不重复的编号；
+- `recipient_name`：收件人姓名；
+- `recipient_email`：收件邮箱；
+- `subject`：邮件主题；
+- `body_text` 或 `body_html`：邮件正文；
+- `target_role`：对应岗位；
+- `review_status`：审核状态。
 
-继续开发前，先阅读：
+其他列不会被丢掉，可以继续用于筛选和预览。主题或正文为空时文件仍能导入，但默认会被拦截，直到你补齐内容
+或在设置中修改本地规则。
 
-1. `AGENTS.md`
-2. `docs/requirements/邮件外联工具_明确需求整理.md`
-3. `docs/architecture/邮件外联工具_技术方案.md`
-4. `docs/decisions/ADR-001-邮件草稿交付方式.md`
-5. `docs/handoffs/邮件工具开发交接.md`
+如果你让 AI 帮忙整理数据，请把
+[AI 数据准备与交接规范](docs/guides/AI数据准备与交接规范.md)
+直接交给它。里面写明了 Excel、JSON、签名图片、字段命名、内容哈希和交付前检查要求。
 
-这些资料从 AI-for-HR 总项目的提交 `24f2c47` 整理而来。今后的邮件工具实现以本独立目录为工作入口；
-上游人才名单的数据来源、确认状态和隐私规则仍由 AI-for-HR 总项目负责。
+仓库里的 [虚构 JSON 示例](samples/outreach_package.sample.json) 可以用来熟悉界面，请不要把示例地址当作真实数据。
 
-## 本地运行
+## 邮件签名
 
-需要 Windows、Node.js、.NET SDK 和桌面版 Outlook。
+在“设置 → 邮件签名”中可以导入 `.html`、`.htm` 或 `.oft` 文件。
 
-```powershell
-cd src\LocalMailMerge.Desktop
-npm install
-npm run desktop
-```
+- HTML 签名如果引用 Logo 等本地图片，请把 HTML 和图片文件夹放在一起再导入；
+- 应用会把可读取的本地图片打包进签名副本，原始文件不会被修改；
+- `.oft` 适合保留 Outlook 的内嵌图片，但检查和使用它需要经典 Outlook；
+- 导入后可以修改签名在应用里的显示名称，不会改动原始文件名；
+- 最稳妥的检查方式是在设置页创建一封“无收件人测试草稿”，然后到 Outlook 查看实际排版。
 
-生成可独立运行的 Windows 目录：
+应用内预览不会加载远程图片、电脑上的绝对路径图片或 CSS 背景资源，因此 Outlook 测试草稿才是最终效果依据。
 
-```powershell
-npm run package
-```
+## 校验与重复保护
 
-输出位于 `src\LocalMailMerge.Desktop\out\Local Mail Merge-win32-x64\`。开发预览可使用
-`--demo` 数据；真实创建流程始终重新导入并校验交接包，批量操作只保存 Outlook 草稿。
+应用会固定拦截无效邮箱和同一批次内重复的人员编号。其余规则可以在“设置 → 导入与安全”里调整为拦截、警告
+或默认放行。
 
-生成 Windows 安装包和免安装 ZIP：
+默认情况下：
 
-```powershell
-npm run make
-```
+- 已经成功创建过的相同草稿、空主题和空正文会被拦截；
+- 未替换的占位符和批次内重复邮箱会给出警告；
+- 未批准、缺少个性化事实或内容哈希不一致会显示为可配置规则。
 
-输出位于 `src\LocalMailMerge.Desktop\out\make\`。对公司电脑试用，优先使用 ZIP，避免增加安装权限和卸载步骤。
+重复保护使用批次、人员编号和实际邮件内容共同判断。不要通过改文件名或人员编号来绕过去重；如果确实需要重新
+创建，请先确认原因，再调整相应规则。
+
+## 数据保存在哪里
+
+- 应用设置和已导入签名：`%APPDATA%\Local Mail Merge\`
+- 草稿去重记录和本地结果报告：`%LOCALAPPDATA%\SeanX16\LocalMailMerge\`
+
+早期测试版留下的 `%LOCALAPPDATA%\HKRC\LocalMailMerge\` 数据仍能继续读取。应用不会把 Outlook
+登录凭据写入这些目录，也不会把邮件数据上传到外部服务。
+
+卸载安装版可以使用 Windows 的“已安装的应用”。便携版可以直接删除解压目录。若还要删除个人设置和去重记录，
+请先确认这些记录以后不再需要，再按公司 IT 规则清理上面的 AppData 目录。
+
+## 常见问题
+
+### 找不到 Outlook 账户
+
+确认经典 Outlook 已安装、当前用户已登录，并先手动打开一次 Outlook。如果仍然找不到，可在设置页重新检测账户。
+
+### 签名在应用里和 Outlook 里不完全一样
+
+应用预览会主动限制外部资源。请创建无收件人测试草稿，以 Outlook 中的实际效果为准。
+
+### 为什么某一行不能勾选
+
+先查看右侧的校验提示。无效邮箱和重复人员编号必须修正；其他问题可以根据实际情况修改数据或调整本地规则。
+
+### 便携版更新时可以覆盖旧文件夹吗
+
+建议把新版本解压到一个新的文件夹，确认能正常运行后再删除旧目录。个人设置保存在 AppData，不会因为换目录而丢失。
+
+更完整的工作电脑检查步骤见
+[公司电脑快速测试](docs/testing/公司电脑快速测试.md)。
+
+## 开发
+
+需要 Node.js、.NET SDK 和 Windows。进入 `src\LocalMailMerge.Desktop` 后运行：
+
+    npm install
+    npm run desktop
+
+生成安装器和便携 ZIP：
+
+    npm run make
+
+构建结果位于 `src\LocalMailMerge.Desktop\out\make\`。
+
+## 作者与许可证
+
+由 [Sean](https://github.com/SeanX16) 开发与维护。
+
+Copyright © 2026 Sean.
+
+Licensed under the [MIT License](LICENSE).

@@ -31,5 +31,8 @@ contextBridge.exposeInMainWorld('desktopApi', {
   },
   close: (): Promise<void> => ipcRenderer.invoke('window:close'),
   setModalState: (active: boolean): Promise<boolean> => ipcRenderer.invoke('window:set-modal-state', active),
-  openOutlook: (): Promise<void> => ipcRenderer.invoke('shell:open-outlook')
+  openOutlook: (): Promise<void> => ipcRenderer.invoke('shell:open-outlook'),
+  openAuthorProfile: (): Promise<void> => ipcRenderer.invoke('shell:open-author-profile'),
+  openProjectLicense: (): Promise<void> => ipcRenderer.invoke('shell:open-project-license'),
+  openProjectRepository: (): Promise<void> => ipcRenderer.invoke('shell:open-project-repository')
 });
