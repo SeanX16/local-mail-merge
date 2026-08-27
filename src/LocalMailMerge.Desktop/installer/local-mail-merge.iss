@@ -49,6 +49,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 LicenseFile=..\..\..\LICENSE
+SetupIconFile=..\assets\icons\local-mail-merge.ico
 UsePreviousAppDir=yes
 UsePreviousTasks=yes
 

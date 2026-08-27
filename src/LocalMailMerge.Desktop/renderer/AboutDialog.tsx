@@ -1,4 +1,4 @@
-import { ExternalLink, MailPlus } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import packageMetadata from '../package.json';
+import appIconUrl from '../assets/icons/source/local-mail-merge.svg';
 
 const repositoryUrl = 'https://github.com/SeanX16/local-mail-merge';
 const authorUrl = 'https://github.com/SeanX16';
@@ -55,7 +56,7 @@ export function AboutDialog({
       >
         <div className="about-identity">
           <span className="about-logo" aria-hidden="true">
-            <MailPlus />
+            <img src={appIconUrl} alt="" width={64} height={64} draggable={false} />
           </span>
           <DialogHeader className="about-header">
             <DialogTitle>Local Mail Merge</DialogTitle>

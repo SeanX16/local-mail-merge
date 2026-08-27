@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { MailPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { HintTooltip } from '@/components/HintTooltip';
+import appIconUrl from '../../../assets/icons/source/local-mail-merge.svg';
 
 export function WindowTitleBar() {
   const [maximized, setMaximized] = useState(false);
@@ -24,7 +24,9 @@ export function WindowTitleBar() {
   return (
     <header className="titlebar">
       <div className="titlebar-brand">
-        <span className="titlebar-logo"><MailPlus /></span>
+        <span className="titlebar-logo" aria-hidden="true">
+          <img src={appIconUrl} alt="" width={20} height={20} draggable={false} />
+        </span>
         <span>Local Mail Merge</span>
       </div>
       <div className="window-controls" role="group" aria-label="窗口控制">

@@ -36,6 +36,7 @@ const windowSizeMatch = windowSizeArgument?.slice('--window-size='.length).match
 const initialWindowSize = windowSizeMatch
   ? { width: Math.max(1000, Number(windowSizeMatch[1])), height: Math.max(620, Number(windowSizeMatch[2])) }
   : { width: 1366, height: 768 };
+const appIconPath = path.resolve(__dirname, '..', 'assets', 'icons', 'local-mail-merge.ico');
 
 function isTrustedSender(url: string): boolean {
   if (url.startsWith('file://')) return true;
@@ -163,6 +164,7 @@ function createWindow(): void {
   const rendererConsoleErrors: string[] = [];
   mainWindow = new BrowserWindow({
     title: 'Local Mail Merge',
+    icon: appIconPath,
     width: initialWindowSize.width,
     height: initialWindowSize.height,
     minWidth: 1000,
@@ -1277,6 +1279,8 @@ function createWindow(): void {
   }
   mainWindow.on('closed', () => { mainWindow = null; });
 }
+
+app.setAppUserModelId('com.seanx16.localmailmerge');
 
 app.whenReady().then(() => {
   if (templateTestSource && templateTestResult) {
