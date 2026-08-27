@@ -18,10 +18,10 @@
 </p>
 
 <p align="center">
-  <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-2563eb?style=flat-square" />
-  <img alt="Version v1.0.0" src="https://img.shields.io/badge/version-v1.0.0-16a34a?style=flat-square" />
-  <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-64748b?style=flat-square" />
-  <img alt="Outlook drafts only" src="https://img.shields.io/badge/Outlook-drafts%20only-f59e0b?style=flat-square" />
+  <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-2563eb?style=flat" />
+  <img alt="Version v1.0.0" src="https://img.shields.io/badge/version-v1.0.0-16a34a?style=flat" />
+  <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-64748b?style=flat" />
+  <img alt="Outlook drafts only" src="https://img.shields.io/badge/Outlook-drafts%20only-f59e0b?style=flat" />
 </p>
 
 ![Local Mail Merge 主界面](docs/design/implementation/local-mail-merge-electron-main-normalized.png)
