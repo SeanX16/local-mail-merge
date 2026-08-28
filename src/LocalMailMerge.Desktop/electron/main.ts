@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, shell, type IpcMainInvokeEvent } from 'electron';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,11 +13,14 @@ import {
 } from './templateCatalog';
 import { getValidationPolicy, saveValidationPolicy } from './validationPolicy';
 import { getAppearanceSettings, saveAppearanceSettings } from './appearanceSettings';
+import { resolveUpdateReleaseUrl, type ResolvedUpdateRelease, type UpdateCheckResult } from './updateRelease';
 
 type WorkerCommand = 'capabilities' | 'inspect-xlsx' | 'import' | 'accounts' | 'inspect-template' | 'test-signature' | 'create-drafts';
 const WORKER_PROTOCOL_VERSION = 2;
+const LATEST_RELEASE_URL = 'https://github.com/SeanX16/local-mail-merge/releases/latest';
 
 let mainWindow: BrowserWindow | null = null;
+let checkedUpdateRelease: ResolvedUpdateRelease | null = null;
 const isDemo = process.argv.includes('--demo');
 const captureArgument = process.argv.find((argument) => argument.startsWith('--capture='));
 const capturePath = captureArgument?.slice('--capture='.length);
@@ -56,6 +59,46 @@ function assertTrustedEvent(event: IpcMainInvokeEvent): void {
   const url = event.senderFrame?.url;
   if (!url) throw new Error('无法确认界面请求来源。');
   assertTrustedSender(url);
+}
+
+async function checkLatestRelease(): Promise<ResolvedUpdateRelease> {
+  const releaseUrl = await new Promise<string>((resolve, reject) => {
+    let settled = false;
+    const request = net.request({
+      method: 'GET',
+      url: LATEST_RELEASE_URL,
+      redirect: 'manual'
+    });
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      callback();
+    };
+    const timeout = setTimeout(() => {
+      finish(() => {
+        request.abort();
+        reject(new Error('连接 GitHub 超时，请稍后重试。'));
+      });
+    }, 15_000);
+
+    request.on('redirect', (_statusCode, _method, redirectUrl) => {
+      finish(() => resolve(redirectUrl));
+    });
+    request.on('response', (response) => {
+      finish(() => reject(new Error(`GitHub 更新检查失败（HTTP ${response.statusCode}）。`)));
+    });
+    request.on('error', () => {
+      finish(() => reject(new Error('无法连接 GitHub，请检查网络后重试。')));
+    });
+    request.end();
+  });
+  return resolveUpdateReleaseUrl(releaseUrl, app.getVersion());
+}
+
+function publicUpdateResult(release: ResolvedUpdateRelease): UpdateCheckResult {
+  const { releaseUrl: _releaseUrl, ...result } = release;
+  return result;
 }
 
 function requireRecord(value: unknown, message: string): Record<string, unknown> {
@@ -1485,6 +1528,16 @@ app.whenReady().then(() => {
   ipcMain.handle('shell:open-project-license', async (event) => {
     assertTrustedEvent(event);
     await shell.openExternal('https://github.com/SeanX16/local-mail-merge/blob/main/LICENSE');
+  });
+  ipcMain.handle('updates:check', async (event) => {
+    assertTrustedEvent(event);
+    checkedUpdateRelease = await checkLatestRelease();
+    return publicUpdateResult(checkedUpdateRelease);
+  });
+  ipcMain.handle('updates:open-release', async (event) => {
+    assertTrustedEvent(event);
+    if (!checkedUpdateRelease) throw new Error('请先检查更新。');
+    await shell.openExternal(checkedUpdateRelease.releaseUrl);
   });
   ipcMain.handle('shell:show-report', (event, reportPath: string) => {
     assertTrustedEvent(event);

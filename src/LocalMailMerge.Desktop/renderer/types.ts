@@ -167,6 +167,12 @@ export interface CreateDraftsRequest {
   account: OutlookAccount;
 }
 
+export interface UpdateCheckResult {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+}
+
 export interface DesktopApi {
   selectPackage(): Promise<string | null>;
   inspectXlsx(filePath: string): Promise<XlsxWorkbookInspection>;
@@ -197,6 +203,8 @@ export interface DesktopApi {
   openAuthorProfile(): Promise<void>;
   openProjectLicense(): Promise<void>;
   openProjectRepository(): Promise<void>;
+  checkForUpdates(): Promise<UpdateCheckResult>;
+  openUpdateRelease(): Promise<void>;
 }
 
 declare global {

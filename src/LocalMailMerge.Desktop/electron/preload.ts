@@ -34,5 +34,7 @@ contextBridge.exposeInMainWorld('desktopApi', {
   openOutlook: (): Promise<void> => ipcRenderer.invoke('shell:open-outlook'),
   openAuthorProfile: (): Promise<void> => ipcRenderer.invoke('shell:open-author-profile'),
   openProjectLicense: (): Promise<void> => ipcRenderer.invoke('shell:open-project-license'),
-  openProjectRepository: (): Promise<void> => ipcRenderer.invoke('shell:open-project-repository')
+  openProjectRepository: (): Promise<void> => ipcRenderer.invoke('shell:open-project-repository'),
+  checkForUpdates: (): Promise<unknown> => ipcRenderer.invoke('updates:check'),
+  openUpdateRelease: (): Promise<void> => ipcRenderer.invoke('updates:open-release')
 });
