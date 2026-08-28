@@ -31,6 +31,7 @@ export interface BatchViewModel {
   sourcePath: string;
   sourceWorksheetName?: string;
   headerRowNumber?: number;
+  sourceEmailColumnName?: string;
   fields: FieldDefinition[];
   records: MailRecord[];
   aggregate?: { total: number; creatable?: number; eligible: number; review: number; blocked?: number; duplicate: number; visible: number };
@@ -59,6 +60,7 @@ export interface XlsxWorkbookInspection {
 export interface XlsxImportOptions {
   worksheetName: string;
   headerRowNumber: number;
+  emailColumnName?: string;
 }
 
 export interface OutlookAccount {
@@ -146,6 +148,7 @@ export interface DraftCreationItemResult {
 
 export interface DraftCreationResponse {
   reportPath: string;
+  reportError?: string;
   summary: {
     success: number;
     skipped: number;
@@ -158,6 +161,7 @@ export interface CreateDraftsRequest {
   packagePath: string;
   worksheetName?: string;
   headerRowNumber?: number;
+  emailColumnName?: string;
   templateId: string;
   selectedPersonIds: string[];
   account: OutlookAccount;

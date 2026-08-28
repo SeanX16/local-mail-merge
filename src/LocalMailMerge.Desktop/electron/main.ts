@@ -812,9 +812,10 @@ function createWindow(): void {
             const checks = {
               dialogOpened: Boolean(dialog),
               partialTitleVisible: text.includes('草稿创建部分完成'),
-              actualCountsVisible: text.includes('实际保存 1 封，跳过 0 封，失败 1 封'),
+              actualCountsVisible: text.includes('实际保存 2 封，跳过 0 封，失败 1 封'),
               failurePersonVisible: text.includes('Emily Brown'),
               failureReasonVisible: text.includes('Outlook 暂时无法保存此草稿'),
+              savedWarningVisible: text.includes('已保存，有提醒') && text.includes('本地重复保护记录写入失败'),
               reportPathVisible: text.includes('LocalMailMerge\\\\reports\\\\demo_batch_20260813_153000.json'),
               revalidationVisible: text.includes('当前交接包已重新校验'),
               showReportActionVisible: text.includes('在文件夹中显示报告')
@@ -955,8 +956,12 @@ function createWindow(): void {
             });
             const sheetSelect = document.querySelector('[data-testid="excel-sheet-select"]');
             const headerSelect = document.querySelector('[data-testid="excel-header-row-select"]');
+            const emailSelect = document.querySelector('[data-testid="excel-email-column-select"]');
             checks.usesCustomSheetSelect = sheetSelect?.getAttribute('role') === 'combobox';
             checks.usesCustomHeaderSelect = headerSelect?.getAttribute('role') === 'combobox';
+            checks.usesCustomEmailSelect = emailSelect?.getAttribute('role') === 'combobox';
+            checks.emailKeywordVariantDetected = emailSelect?.textContent?.includes('学生邮箱') ?? false;
+            checks.confirmEnabledWithDetectedEmail = !document.querySelector('[data-testid="excel-import-confirm"]')?.hasAttribute('disabled');
             sheetSelect?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
             sheetSelect?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
             await wait(40);
@@ -968,6 +973,19 @@ function createWindow(): void {
             await wait(60);
             checks.sheetChanged = sheetSelect?.textContent?.includes('Summary') ?? false;
             checks.previewUpdated = (document.querySelector('.excel-preview-table')?.textContent ?? '').includes('Metric');
+            checks.missingEmailPromptVisible = (document.querySelector('.excel-import-dialog')?.textContent ?? '').includes('尚未识别邮箱字段');
+            checks.confirmDisabledWithoutEmail = document.querySelector('[data-testid="excel-import-confirm"]')?.hasAttribute('disabled') ?? false;
+            emailSelect?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
+            emailSelect?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+            await wait(40);
+            const valueOption = [...document.querySelectorAll('[data-slot="select-item"]')].find((item) => item.textContent?.trim() === 'Value');
+            valueOption?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
+            valueOption?.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerType: 'mouse', isPrimary: true }));
+            valueOption?.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0 }));
+            await wait(60);
+            checks.manualEmailSelectionAccepted = emailSelect?.textContent?.includes('Value') ?? false;
+            checks.manualEmailNoticeVisible = (document.querySelector('.excel-import-dialog')?.textContent ?? '').includes('手动指定');
+            checks.confirmEnabledAfterManualEmail = !document.querySelector('[data-testid="excel-import-confirm"]')?.hasAttribute('disabled');
             document.querySelector('.excel-import-footer [data-variant="outline"]')?.click();
             await wait(40);
             checks.dialogClosed = !document.querySelector('.excel-import-dialog');
@@ -1400,10 +1418,12 @@ app.whenReady().then(() => {
     const record = requireRecord(options, 'Excel 导入参数无效。');
     const worksheetName = typeof record.worksheetName === 'string' ? record.worksheetName.trim() : '';
     const headerRowNumber = typeof record.headerRowNumber === 'number' ? record.headerRowNumber : 0;
+    const emailColumnName = typeof record.emailColumnName === 'string' ? record.emailColumnName.trim() : '';
     if (!worksheetName || worksheetName.length > 128 || !Number.isInteger(headerRowNumber) || headerRowNumber < 1 || headerRowNumber > 1_048_576) {
       throw new Error('Excel Sheet 或字段行参数无效。');
     }
-    return runWorker('import', { path: filePath, worksheetName, headerRowNumber, validationPolicy });
+    if (emailColumnName.length > 256) throw new Error('Excel 邮箱字段名称过长。');
+    return runWorker('import', { path: filePath, worksheetName, headerRowNumber, emailColumnName, validationPolicy });
   });
   ipcMain.handle('worker:accounts', (event) => {
     assertTrustedEvent(event);

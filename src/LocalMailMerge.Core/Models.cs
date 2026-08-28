@@ -11,9 +11,10 @@ public sealed class OutreachBatch
     public required IReadOnlyList<OutreachMessage> Messages { get; init; }
     public string SourceWorksheetName { get; init; } = string.Empty;
     public int? HeaderRowNumber { get; init; }
+    public string SourceEmailColumnName { get; init; } = string.Empty;
 }
 
-public sealed record XlsxImportOptions(string WorksheetName, int HeaderRowNumber);
+public sealed record XlsxImportOptions(string WorksheetName, int HeaderRowNumber, string EmailColumnName = "");
 
 public sealed record XlsxPreviewRow(int RowNumber, IReadOnlyList<string> Values);
 

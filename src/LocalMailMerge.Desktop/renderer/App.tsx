@@ -103,7 +103,7 @@ const previewXlsxInspection: XlsxWorkbookInspection = {
     {
       name: 'Talent List', index: 1, rowCount: 328, columnCount: 10, suggestedHeaderRowNumber: 1, dataRowCount: 327,
       previewRows: [
-        { rowNumber: 1, values: ['Person ID', 'Full Name', 'First Name', 'Last Name', 'Email', 'Organization', 'Department / School', 'Job Category', 'Original Job Title', 'Data Quality Status'] },
+        { rowNumber: 1, values: ['Person ID', 'Full Name', 'First Name', 'Last Name', '学生邮箱', 'Organization', 'Department / School', 'Job Category', 'Original Job Title', 'Data Quality Status'] },
         { rowNumber: 2, values: ['demo_001', 'James Anderson', 'James', 'Anderson', 'james.anderson@example.test', 'Example University', 'Graphics Lab', 'Postdoc', 'Postdoctoral Fellow', 'Accepted'] },
         { rowNumber: 3, values: ['demo_002', 'Emily Brown', 'Emily', 'Brown', 'emily.brown@example.test', 'Demo Institute', 'Video Lab', 'RA', 'Research Assistant', 'Accepted'] },
         { rowNumber: 4, values: ['demo_003', 'Michael Chen', 'Michael', 'Chen', 'michael.chen@example.test', 'Sample University', 'Data Science', 'RAP', 'Research Assistant Professor', 'Needs Review'] },
@@ -280,14 +280,15 @@ export function App() {
 
   useEffect(() => {
     if (!creationResultState) return;
-    const previewRecords = demoBatch.records.slice(0, 2);
+    const previewRecords = demoBatch.records.slice(0, 3);
     const timer = window.setTimeout(() => setCreationResult({
       response: {
         reportPath: 'C:\\Users\\Example\\AppData\\Local\\SeanX16\\LocalMailMerge\\reports\\demo_batch_20260813_153000.json',
-        summary: { success: 1, skipped: 0, failed: 1 },
+        summary: { success: 2, skipped: 0, failed: 1 },
         results: [
           { personId: previewRecords[0]?.personId ?? 'demo_001', outcome: 'Success', outlookEntryId: 'demo-entry', errorCode: '', errorMessage: '' },
-          { personId: previewRecords[1]?.personId ?? 'demo_002', outcome: 'Failed', outlookEntryId: '', errorCode: 'COMException', errorMessage: 'Outlook 暂时无法保存此草稿，请确认经典 Outlook 已启动后重试。' }
+          { personId: previewRecords[1]?.personId ?? 'demo_002', outcome: 'Failed', outlookEntryId: '', errorCode: 'COMException', errorMessage: 'Outlook 暂时无法保存此草稿，请确认经典 Outlook 已启动后重试。' },
+          { personId: previewRecords[2]?.personId ?? 'demo_003', outcome: 'Success', outlookEntryId: 'demo-entry-2', errorCode: 'PostSaveWarning', errorMessage: '草稿已保存，但本地重复保护记录写入失败：示例权限错误。' }
         ]
       },
       records: previewRecords
@@ -486,7 +487,11 @@ export function App() {
     setValidationPolicy(saved);
     if (hasImportedPackage) {
       const options = batch.sourceWorksheetName && batch.headerRowNumber
-        ? { worksheetName: batch.sourceWorksheetName, headerRowNumber: batch.headerRowNumber }
+        ? {
+            worksheetName: batch.sourceWorksheetName,
+            headerRowNumber: batch.headerRowNumber,
+            emailColumnName: batch.sourceEmailColumnName ?? ''
+          }
         : undefined;
       const refreshed = await window.desktopApi.importPackage(batch.sourcePath, options);
       setBatch(refreshed);
@@ -657,6 +662,7 @@ export function App() {
         packagePath: batch.sourcePath,
         worksheetName: batch.sourceWorksheetName,
         headerRowNumber: batch.headerRowNumber,
+        emailColumnName: batch.sourceEmailColumnName,
         templateId: selectedTemplateId,
         selectedPersonIds: selectedRecords.map((record) => record.personId),
         account
@@ -675,7 +681,11 @@ export function App() {
       let revalidationError = '';
       try {
         const xlsxOptions = batch.sourceWorksheetName && batch.headerRowNumber
-          ? { worksheetName: batch.sourceWorksheetName, headerRowNumber: batch.headerRowNumber }
+          ? {
+              worksheetName: batch.sourceWorksheetName,
+              headerRowNumber: batch.headerRowNumber,
+              emailColumnName: batch.sourceEmailColumnName ?? ''
+            }
           : undefined;
         const refreshed = await window.desktopApi.importPackage(batch.sourcePath, xlsxOptions);
         setBatch(refreshed);
@@ -691,13 +701,6 @@ export function App() {
         revalidationError = safeMessage(error);
       }
       setCreationResult({ response, records: selectedSnapshot, revalidationError: revalidationError || undefined });
-      if (response.summary.failed === 0 && response.summary.skipped === 0) {
-        toast.success(`已实际保存 ${response.summary.success} 封 Outlook 草稿。`);
-      } else if (response.summary.success > 0) {
-        toast.warning(`已保存 ${response.summary.success} 封，${response.summary.failed} 封失败，${response.summary.skipped} 封跳过。`);
-      } else {
-        toast.error(`未保存草稿：${response.summary.failed} 封失败，${response.summary.skipped} 封跳过。`);
-      }
     } catch (error) {
       toast.error(safeMessage(error));
     } finally {

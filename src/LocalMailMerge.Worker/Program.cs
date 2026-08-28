@@ -118,10 +118,20 @@ internal static class Program
             account,
             templatePath,
             auditStore).ConfigureAwait(false);
-        var reportPath = await auditStore.WriteReportAsync(batch.BatchId, results).ConfigureAwait(false);
+        var reportPath = string.Empty;
+        var reportError = string.Empty;
+        try
+        {
+            reportPath = await auditStore.WriteReportAsync(batch.BatchId, results).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            reportError = SanitizeError(exception);
+        }
         return new
         {
             reportPath,
+            reportError,
             summary = new
             {
                 success = results.Count(result => result.Outcome == "Success"),
@@ -194,7 +204,11 @@ internal static class Program
 
         var worksheetName = worksheetElement.GetString();
         if (string.IsNullOrWhiteSpace(worksheetName)) throw new InvalidDataException("Excel Sheet 名称为空。");
-        return new XlsxImportOptions(worksheetName, headerRowNumber);
+        var emailColumnName = input.TryGetProperty("emailColumnName", out var emailElement) && emailElement.ValueKind == JsonValueKind.String
+            ? emailElement.GetString()?.Trim() ?? string.Empty
+            : string.Empty;
+        if (emailColumnName.Length > 256) throw new InvalidDataException("Excel 邮箱字段名称过长。");
+        return new XlsxImportOptions(worksheetName, headerRowNumber, emailColumnName);
     }
 
     private static object ToViewModel(OutreachBatch batch)
@@ -246,6 +260,7 @@ internal static class Program
             sourcePath = batch.SourcePath,
             sourceWorksheetName = string.IsNullOrWhiteSpace(batch.SourceWorksheetName) ? null : batch.SourceWorksheetName,
             batch.HeaderRowNumber,
+            sourceEmailColumnName = string.IsNullOrWhiteSpace(batch.SourceEmailColumnName) ? null : batch.SourceEmailColumnName,
             fields,
             records,
             aggregate = new

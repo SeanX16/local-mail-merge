@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\LocalMailMerge.Core\LocalMailMerge.Core.csproj" />
+    <Compile Include="..\..\src\LocalMailMerge.App\OutlookLateBinding.cs" Link="OutlookLateBinding.cs" />
     <None Include="..\..\samples\outreach_package.sample.json" Link="samples\outreach_package.sample.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

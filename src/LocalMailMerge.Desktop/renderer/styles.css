@@ -377,14 +377,25 @@ body { font-size: 13px; line-height: 1.45; }
 .about-link svg { width: 12px; height: 12px; }
 .about-link-separator { height: 14px; }
 
-.creation-result-dialog { width: min(620px, calc(100vw - 48px)); max-width: 620px !important; max-height: min(680px, calc(100vh - 48px)); grid-template-rows: auto auto minmax(0, auto) auto auto auto; gap: 12px; overflow: hidden; }
-.creation-result-header { padding-right: 24px; }
-.creation-result-counts { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 3px; }
+.creation-result-dialog { width: min(620px, calc(100vw - 48px)); max-width: 620px !important; max-height: min(680px, calc(100vh - 48px)); display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+.creation-result-header { min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 11px; padding-right: 24px; text-align: left; }
+.creation-result-header > div { min-width: 0; display: grid; gap: 3px; }
+.creation-result-status-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 11px; }
+.creation-result-status-icon svg { width: 20px; height: 20px; }
+.creation-result-status-icon[data-tone="success"] { background: var(--success-soft); color: var(--success); }
+.creation-result-status-icon[data-tone="warning"] { background: var(--warning-soft); color: color-mix(in oklch, var(--warning) 82%, black); }
+.creation-result-status-icon[data-tone="danger"] { background: var(--danger-soft); color: var(--destructive); }
+.creation-result-counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.creation-result-counts > div { min-width: 0; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius); background: color-mix(in oklch, var(--muted) 52%, var(--card)); }
+.creation-result-counts span { color: var(--muted-foreground); font-size: 11px; }
+.creation-result-counts strong { font-size: 18px; line-height: 1; font-variant-numeric: tabular-nums; }
+.creation-result-counts [data-tone="success"] strong { color: var(--success); }
+.creation-result-counts [data-tone="danger"] strong { color: var(--destructive); }
 .creation-result-details { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 6px; }
 .creation-result-section-heading { display: flex; align-items: center; justify-content: space-between; }
 .creation-result-section-heading h3 { margin: 0; font-size: 12.5px; font-weight: 650; }
 .creation-result-section-heading span { color: var(--muted-foreground); font-size: 11px; }
-.creation-result-scroll { max-height: 210px; border: 1px solid var(--border); border-radius: var(--radius); }
+.creation-result-scroll { max-height: 220px; border: 1px solid var(--border); border-radius: var(--radius); }
 .creation-result-list { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
 .creation-result-list li { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .creation-result-list li:last-child { border-bottom: 0; }
@@ -392,10 +403,15 @@ body { font-size: 13px; line-height: 1.45; }
 .creation-result-person > span { min-width: 0; display: flex; flex-direction: column; }
 .creation-result-person strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .creation-result-person small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); font-size: 11px; }
-.creation-result-list p { margin: 0; font-size: 11.5px; }
-.creation-result-list code { width: fit-content; color: var(--muted-foreground); font-size: 10.5px; }
+.creation-result-list p { margin: 0; overflow-wrap: anywhere; color: color-mix(in oklch, var(--foreground) 88%, transparent); font-size: 11.5px; line-height: 1.45; }
+.creation-result-person-id { color: var(--muted-foreground); font-size: 10.5px; }
+.creation-result-warning-badge { border-color: color-mix(in oklch, var(--warning) 36%, var(--border)); background: var(--warning-soft); color: color-mix(in oklch, var(--warning) 82%, black); }
+.creation-result-report { background: color-mix(in oklch, var(--muted) 44%, var(--card)); }
+.creation-result-report-warning { border-color: color-mix(in oklch, var(--warning) 38%, var(--border)); background: var(--warning-soft); }
+.creation-result-report-warning [data-slot="alert-title"] { color: color-mix(in oklch, var(--warning) 82%, black); }
 .creation-report-path { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
-.creation-revalidation-note { margin: 0; color: var(--muted-foreground); font-size: 11px; }
+.creation-revalidation-note { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--muted-foreground); font-size: 11px; line-height: 1.4; }
+.creation-revalidation-note svg { width: 13px; height: 13px; flex: none; margin-top: 1px; }
 .creation-result-footer { margin-top: 0; }
 
 .settings-dialog { width: min(880px, calc(100vw - 48px)); max-width: 880px !important; height: min(610px, calc(100vh - 48px)); grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; padding: 0; overflow: hidden; }
@@ -493,9 +509,10 @@ body { font-size: 13px; line-height: 1.45; }
 .excel-import-header [data-slot="dialog-description"] { max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
 .dialog-title-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: color-mix(in oklch, var(--primary) 10%, transparent); color: var(--primary); }
 .dialog-title-icon svg { width: 18px; height: 18px; }
-.excel-import-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 18px 10px; }
+.excel-import-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 12px 18px 10px; }
 .excel-import-controls [data-slot="field-label"] { font-size: 11.5px; font-weight: 600; }
 .excel-import-controls [data-slot="select-trigger"] { height: 32px; font-size: 12px; }
+.excel-import-controls [data-slot="select-trigger"] > svg:first-child { color: var(--muted-foreground); }
 .excel-import-recommendation { margin: 0 18px 10px; padding: 8px 10px; }
 .excel-import-recommendation [data-slot="alert-title"] { font-size: 12px; }
 .excel-import-recommendation [data-slot="alert-description"] { font-size: 11.5px; }
@@ -503,6 +520,7 @@ body { font-size: 13px; line-height: 1.45; }
 .excel-preview-heading div { display: grid; }
 .excel-preview-heading strong { font-size: 12.5px; }
 .excel-preview-heading span { color: var(--muted-foreground); font-size: 11px; }
+.excel-preview-badges { display: flex !important; align-items: center; justify-content: flex-end; gap: 6px; }
 .excel-preview-frame { min-height: 0; margin: 0 18px 12px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 .excel-preview-frame [data-slot="table-container"] { overflow: visible; }
 .excel-preview-table { min-width: 100%; table-layout: fixed; }
@@ -510,6 +528,7 @@ body { font-size: 13px; line-height: 1.45; }
 .excel-preview-table [data-slot="table-head"], .excel-preview-table [data-slot="table-cell"] { width: 144px; min-width: 144px; max-width: 144px; height: 31px; padding: 4px 8px; border-right: 1px solid color-mix(in oklch, var(--border) 72%, transparent); font-size: 11.5px; }
 .excel-preview-table [data-slot="table-head"] span, .excel-preview-table [data-slot="table-cell"] span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .excel-preview-table [data-slot="table-head"] { font-weight: 650; }
+.excel-preview-table [data-slot="table-head"].is-email-column { background: color-mix(in oklch, var(--primary) 10%, var(--muted)); color: var(--primary); }
 .excel-preview-table [data-slot="table-row"]:hover { background: color-mix(in oklch, var(--muted) 55%, white); }
 .excel-row-number { width: 52px !important; min-width: 52px !important; max-width: 52px !important; color: var(--muted-foreground); text-align: center; font-variant-numeric: tabular-nums; }
 .excel-preview-empty { height: 160px; display: grid; place-items: center; color: var(--muted-foreground); }

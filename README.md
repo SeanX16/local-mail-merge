@@ -19,12 +19,12 @@
 
 <p align="center">
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-2563eb?style=flat" />
-  <img alt="Version v1.0.1" src="https://img.shields.io/badge/version-v1.0.1-16a34a?style=flat" />
+  <img alt="Version v1.0.2" src="https://img.shields.io/badge/version-v1.0.2-16a34a?style=flat" />
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-64748b?style=flat" />
   <img alt="Outlook drafts only" src="https://img.shields.io/badge/Outlook-drafts%20only-f59e0b?style=flat" />
 </p>
 
-![Local Mail Merge v1.0.1 主界面](docs/design/implementation/local-mail-merge-main-v1.0.1.png)
+![Local Mail Merge 主界面](docs/design/implementation/local-mail-merge-main-v1.0.1.png)
 
 | 导入前已经审核 | 创建前逐封确认 | 发送始终由你决定 |
 |---|---|---|
@@ -35,12 +35,12 @@
 
 ## 📥 下载
 
-当前正式版为 **v1.0.1**，仅支持 Windows x64。
+当前正式版为 **v1.0.2**，仅支持 Windows x64。
 
 | 版本 | 适合场景 | 下载 |
 |---|---|---|
-| 安装版 | 标准安装向导，可选择安装目录和快捷方式 | [下载 Setup.exe](https://github.com/SeanX16/local-mail-merge/releases/download/v1.0.1/Local-Mail-Merge-v1.0.1-Setup.exe) |
-| 便携版 | 不想安装，或先在工作电脑上测试 | [下载 Portable ZIP](https://github.com/SeanX16/local-mail-merge/releases/download/v1.0.1/Local-Mail-Merge-v1.0.1-Portable-win-x64.zip) |
+| 安装版 | 标准安装向导，可选择安装目录和快捷方式 | [下载 Setup.exe](https://github.com/SeanX16/local-mail-merge/releases/download/v1.0.2/Local-Mail-Merge-v1.0.2-Setup.exe) |
+| 便携版 | 不想安装，或先在工作电脑上测试 | [下载 Portable ZIP](https://github.com/SeanX16/local-mail-merge/releases/download/v1.0.2/Local-Mail-Merge-v1.0.2-Portable-win-x64.zip) |
 
 便携版不是单文件程序。下载后请完整解压到一个新文件夹，再运行 `LocalMailMerge.exe`，不要直接在压缩包里启动。
 

@@ -139,35 +139,58 @@ internal sealed partial class OutlookDraftService
                         ? Convert.ToString(GetProperty(mail, "HTMLBody"), System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty
                         : signatureHtml;
                     SetProperty(mail, "HTMLBody", SignatureTemplateInspector.CombineHtml(message.EffectiveBodyHtml, existingTemplateBody));
-                    InvokeMember(mail, "Save");
-                    var entryId = Convert.ToString(GetProperty(mail, "EntryID"), System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+                    InvokeVoidMember(mail, "Save");
 
-                    var result = new DraftCreationResult(message.PersonId, "Success", entryId, string.Empty, string.Empty);
-                    results.Add(result);
-                    auditStore.AppendAsync(new AuditEntry(
-                        message.BatchId,
+                    var entryId = TryReadStringProperty(mail, "EntryID", out var entryIdError);
+                    var warnings = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(entryIdError))
+                    {
+                        warnings.Add($"草稿已保存，但未能读取 Outlook 草稿 ID：{entryIdError}");
+                    }
+
+                    var auditError = TryAppendAudit(
+                        auditStore,
+                        new AuditEntry(
+                            message.BatchId,
+                            message.PersonId,
+                            message.ComputedContentHash,
+                            entryId,
+                            DateTimeOffset.Now,
+                            "Success",
+                            string.Empty,
+                            string.Empty),
+                        cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(auditError))
+                    {
+                        warnings.Add($"草稿已保存，但本地重复保护记录写入失败：{auditError}");
+                    }
+
+                    results.Add(new DraftCreationResult(
                         message.PersonId,
-                        message.ComputedContentHash,
-                        entryId,
-                        DateTimeOffset.Now,
                         "Success",
-                        string.Empty,
-                        string.Empty), cancellationToken).GetAwaiter().GetResult();
+                        entryId,
+                        warnings.Count > 0 ? "PostSaveWarning" : string.Empty,
+                        string.Join("；", warnings)));
                 }
                 catch (Exception exception)
                 {
                     var error = SanitizeError(exception);
-                    var result = new DraftCreationResult(message.PersonId, "Failed", string.Empty, exception.GetType().Name, error);
-                    results.Add(result);
-                    auditStore.AppendAsync(new AuditEntry(
-                        message.BatchId,
-                        message.PersonId,
-                        message.ComputedContentHash,
-                        string.Empty,
-                        DateTimeOffset.Now,
-                        "Failed",
-                        exception.GetType().Name,
-                        error), cancellationToken).GetAwaiter().GetResult();
+                    var auditError = TryAppendAudit(
+                        auditStore,
+                        new AuditEntry(
+                            message.BatchId,
+                            message.PersonId,
+                            message.ComputedContentHash,
+                            string.Empty,
+                            DateTimeOffset.Now,
+                            "Failed",
+                            exception.GetType().Name,
+                            error),
+                        cancellationToken);
+                    var fullError = string.IsNullOrWhiteSpace(auditError)
+                        ? error
+                        : $"{error}；本地失败记录也未能写入：{auditError}";
+                    results.Add(new DraftCreationResult(message.PersonId, "Failed", string.Empty, exception.GetType().Name, fullError));
                 }
                 finally
                 {
@@ -247,7 +270,7 @@ internal sealed partial class OutlookDraftService
         {
             if (mail is not null)
             {
-                try { InvokeMember(mail, "Close", 1); } catch { }
+                try { InvokeVoidMember(mail, "Close", 1); } catch { }
             }
             ReleaseCom(attachments);
             ReleaseCom(mail);
@@ -299,8 +322,8 @@ internal sealed partial class OutlookDraftService
                 : File.ReadAllText(templatePath);
             const string testBody = "<div style=\"font-family:'Microsoft YaHei UI','Segoe UI',sans-serif\"><p><strong>Local Mail Merge 邮件签名测试</strong></p><p>这是一封没有收件人的本地测试草稿。请检查下方签名的文字、Logo、链接和排版；确认后删除本草稿，不要发送。</p></div>";
             SetProperty(mail, "HTMLBody", SignatureTemplateInspector.CombineHtml(testBody, signatureHtml));
-            InvokeMember(mail, "Save");
-            var entryId = Convert.ToString(GetProperty(mail, "EntryID"), System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+            InvokeVoidMember(mail, "Save");
+            var entryId = TryReadStringProperty(mail, "EntryID", out _);
             return new SignatureTestDraftResult(entryId, inspection);
         }
         finally
@@ -376,8 +399,37 @@ internal sealed partial class OutlookDraftService
         target.GetType().InvokeMember(name, System.Reflection.BindingFlags.SetProperty, null, target, [value]);
 
     private static object InvokeMember(object target, string name, params object?[] arguments) =>
-        target.GetType().InvokeMember(name, System.Reflection.BindingFlags.InvokeMethod, null, target, arguments)
-        ?? throw new InvalidOperationException($"Outlook 操作失败：{name}");
+        OutlookLateBinding.InvokeRequired(target, name, arguments);
+
+    private static void InvokeVoidMember(object target, string name, params object?[] arguments) =>
+        OutlookLateBinding.InvokeVoid(target, name, arguments);
+
+    private static string TryReadStringProperty(object target, string name, out string error)
+    {
+        try
+        {
+            error = string.Empty;
+            return Convert.ToString(GetProperty(target, name), System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        }
+        catch (Exception exception)
+        {
+            error = SanitizeError(exception);
+            return string.Empty;
+        }
+    }
+
+    private static string TryAppendAudit(AuditStore auditStore, AuditEntry entry, CancellationToken cancellationToken)
+    {
+        try
+        {
+            auditStore.AppendAsync(entry, cancellationToken).GetAwaiter().GetResult();
+            return string.Empty;
+        }
+        catch (Exception exception)
+        {
+            return SanitizeError(exception);
+        }
+    }
 
     private static void ReleaseCom(object? value)
     {

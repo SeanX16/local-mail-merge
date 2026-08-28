@@ -10,5 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="..\LocalMailMerge.Core\LocalMailMerge.Core.csproj" />
     <Compile Include="..\LocalMailMerge.App\OutlookDraftService.cs" Link="OutlookDraftService.cs" />
+    <Compile Include="..\LocalMailMerge.App\OutlookLateBinding.cs" Link="OutlookLateBinding.cs" />
   </ItemGroup>
 </Project>

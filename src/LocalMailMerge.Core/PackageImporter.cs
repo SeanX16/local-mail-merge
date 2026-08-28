@@ -2,25 +2,29 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace LocalMailMerge.Core;
 
 public sealed class PackageImporter
 {
-    private static readonly string[] PersonIdAliases = ["person_id", "personid", "人员id", "候选人id"];
-    private static readonly string[] NameAliases = ["recipient_name", "name", "full_name", "fullname", "姓名", "候选人姓名"];
-    private static readonly string[] EmailAliases = ["recipient_email", "email", "邮箱", "邮件地址"];
-    private static readonly string[] SubjectAliases = ["subject", "邮件主题", "主题"];
-    private static readonly string[] BodyHtmlAliases = ["body_html", "htmlbody", "邮件正文html", "正文html"];
-    private static readonly string[] BodyTextAliases = ["body_text", "body", "邮件正文", "正文"];
-    private static readonly string[] RoleAliases = ["target_role", "targetrole", "job_category", "jobcategory", "original_job_title", "originaljobtitle", "目标岗位", "岗位"];
-    private static readonly string[] ReviewAliases = ["review_status", "reviewstatus", "审核状态", "审核"];
+    private static readonly string[] PersonIdAliases = ["person_id", "personid", "record_id", "recordid", "candidate_id", "candidateid", "人员id", "候选人id", "记录id"];
+    private static readonly string[] NameAliases = ["recipient_name", "name", "full_name", "fullname", "candidate_name", "candidatename", "contact_name", "contactname", "姓名", "候选人姓名", "联系人姓名"];
+    private static readonly string[] EmailAliases = ["recipient_email", "email", "e-mail", "email_address", "emailaddress", "e-mail_address", "email_id", "emailid", "邮箱", "邮箱地址", "邮件地址", "电子邮箱", "电子邮件", "电子邮件地址", "联系邮箱", "工作邮箱"];
+    private static readonly string[] EmailHeaderKeywords = ["email", "邮箱", "电子邮件", "电邮"];
+    private static readonly string[] EmailHeaderNegativeKeywords = ["status", "state", "valid", "validity", "verified", "verification", "reason", "type", "domain", "optout", "unsubscribe", "consent", "bounce", "bounced", "是否", "状态", "有效", "验证", "原因", "类型", "域名", "退订", "拒收", "许可", "同意", "标记"];
+    private static readonly Regex EmailValueRegex = new(@"^[^\s@]+@[^\s@]+\.[^\s@]+$", RegexOptions.CultureInvariant);
+    private static readonly string[] SubjectAliases = ["subject", "email_subject", "emailsubject", "邮件主题", "主题"];
+    private static readonly string[] BodyHtmlAliases = ["body_html", "htmlbody", "email_body_html", "emailbodyhtml", "邮件正文html", "正文html"];
+    private static readonly string[] BodyTextAliases = ["body_text", "body", "email_body", "emailbody", "message", "邮件正文", "正文"];
+    private static readonly string[] RoleAliases = ["target_role", "targetrole", "job_category", "jobcategory", "original_job_title", "originaljobtitle", "job_title", "jobtitle", "position", "role", "title", "目标岗位", "岗位", "职位", "职称", "岗位名称"];
+    private static readonly string[] ReviewAliases = ["review_status", "reviewstatus", "approval_status", "approvalstatus", "审核状态", "审批状态", "审核"];
     private static readonly string[] DoNotContactAliases = ["do_not_contact", "donotcontact", "禁止联系"];
     private static readonly string[] ContentHashAliases = ["content_hash", "contenthash", "内容哈希"];
     private static readonly string[] FactsAliases = ["personalization_facts", "personalizationfacts", "个性化事实"];
-    private static readonly string[] OrganizationAliases = ["organization", "organisation", "company", "school", "university", "机构", "单位"];
-    private static readonly string[] SourceUrlAliases = ["primary_source_url", "primarysourceurl", "source_url", "sourceurl", "来源url"];
+    private static readonly string[] OrganizationAliases = ["organization", "organisation", "organization_name", "organisation_name", "company", "company_name", "institution", "affiliation", "employer", "school", "university", "机构", "机构名称", "单位", "公司", "学校", "院校"];
+    private static readonly string[] SourceUrlAliases = ["primary_source_url", "primarysourceurl", "source_url", "sourceurl", "profile_url", "profileurl", "来源url", "来源链接"];
 
     public Task<OutreachBatch> ImportAsync(string path, CancellationToken cancellationToken = default) =>
         ImportAsync(path, null, cancellationToken);
@@ -152,6 +156,11 @@ public sealed class PackageImporter
             .Select(index => headerRow.Cells.TryGetValue(index, out var value) ? value : $"Column {index + 1}")
             .ToList();
         var headers = MakeUniqueHeaders(rawHeaders);
+        var emailColumnName = options?.EmailColumnName?.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(emailColumnName) && !headers.Contains(emailColumnName, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException($"所选邮箱字段不存在：{emailColumnName}");
+        }
 
         var records = dataRows
             .Where(row => row.Cells.Values.Any(value => !string.IsNullOrWhiteSpace(value)))
@@ -170,7 +179,8 @@ public sealed class PackageImporter
             records,
             null,
             selected.Name,
-            headerRowNumber);
+            headerRowNumber,
+            emailColumnName);
     }
 
     private static XlsxWorkbookInspection InspectXlsx(string path)
@@ -249,8 +259,13 @@ public sealed class PackageImporter
             if (headerValues.Count == 0) continue;
 
             var nameMatch = HeaderMatches(headerValues, NameAliases);
-            var emailMatch = HeaderMatches(headerValues, EmailAliases);
-            var identityMatches = CountHeaderMatches(headerValues, PersonIdAliases, NameAliases, EmailAliases);
+            var headerRow = rows[headerIndex];
+            var emailColumns = ScoreEmailColumns(headerRow.Cells.OrderBy(cell => cell.Key).Select(cell => (
+                Header: cell.Value,
+                Values: rows.Where(row => row.RowNumber > headerRow.RowNumber)
+                    .Select(row => row.Cells.TryGetValue(cell.Key, out var value) ? value : string.Empty))));
+            var emailMatch = emailColumns.Any(candidate => candidate.Eligible);
+            var identityMatches = CountHeaderMatches(headerValues, PersonIdAliases, NameAliases) + (emailMatch ? 1 : 0);
             var supportMatches = CountHeaderMatches(headerValues, RoleAliases, OrganizationAliases, SourceUrlAliases);
             var dataRowCount = rows.Where(row => row.RowNumber > rows[headerIndex].RowNumber)
                 .Count(row => row.Cells.Values.Any(value => !string.IsNullOrWhiteSpace(value)));
@@ -282,7 +297,8 @@ public sealed class PackageImporter
         IReadOnlyList<Dictionary<string, string>> records,
         IReadOnlyList<IReadOnlyList<PersonalizationFact>>? factsByRecord,
         string sourceWorksheetName = "",
-        int? headerRowNumber = null)
+        int? headerRowNumber = null,
+        string emailColumnName = "")
     {
         var fieldOrder = new List<string>();
         foreach (var record in records)
@@ -295,6 +311,12 @@ public sealed class PackageImporter
                 }
             }
         }
+
+        var resolvedEmailColumnName = string.IsNullOrWhiteSpace(emailColumnName)
+            ? FindLikelyEmailColumn(fieldOrder.Select((header, index) => (
+                Header: header,
+                Values: records.Select(record => record.TryGetValue(header, out var value) ? value : string.Empty))))
+            : emailColumnName;
 
         var fields = fieldOrder
             .Select(key => new ImportField(key, GetDisplayName(key), IsDefaultVisible(key)))
@@ -318,7 +340,7 @@ public sealed class PackageImporter
                 BatchId = batchId,
                 PersonId = personId,
                 RecipientName = GetAlias(record, NameAliases),
-                RecipientEmail = GetAlias(record, EmailAliases),
+                RecipientEmail = GetMappedValueOrAlias(record, resolvedEmailColumnName, EmailAliases),
                 Subject = GetAlias(record, SubjectAliases),
                 BodyHtml = GetAlias(record, BodyHtmlAliases),
                 BodyText = GetAlias(record, BodyTextAliases),
@@ -339,7 +361,8 @@ public sealed class PackageImporter
             Fields = fields,
             Messages = messages,
             SourceWorksheetName = sourceWorksheetName,
-            HeaderRowNumber = headerRowNumber
+            HeaderRowNumber = headerRowNumber,
+            SourceEmailColumnName = resolvedEmailColumnName
         };
     }
 
@@ -405,6 +428,63 @@ public sealed class PackageImporter
         return string.Empty;
     }
 
+    private static string GetMappedValueOrAlias(
+        IReadOnlyDictionary<string, string> record,
+        string mappedKey,
+        IEnumerable<string> aliases)
+    {
+        if (!string.IsNullOrWhiteSpace(mappedKey))
+        {
+            return record.TryGetValue(mappedKey, out var mappedValue) ? mappedValue?.Trim() ?? string.Empty : string.Empty;
+        }
+
+        return GetAlias(record, aliases);
+    }
+
+    private static string FindLikelyEmailColumn(IEnumerable<(string Header, IEnumerable<string> Values)> columns)
+    {
+        var candidates = ScoreEmailColumns(columns)
+            .Where(candidate => candidate.Eligible)
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenBy(candidate => candidate.Index)
+            .ToList();
+        if (candidates.Count == 0) return string.Empty;
+        if (candidates.Count == 1) return candidates[0].Header;
+
+        var best = candidates[0];
+        var second = candidates[1];
+        if (best.ExactAlias && !second.ExactAlias) return best.Header;
+        return best.Score - second.Score >= 150 ? best.Header : string.Empty;
+    }
+
+    private static IReadOnlyList<EmailColumnScore> ScoreEmailColumns(
+        IEnumerable<(string Header, IEnumerable<string> Values)> columns) =>
+        columns.Select((column, index) => ScoreEmailColumn(column.Header, column.Values, index)).ToList();
+
+    private static EmailColumnScore ScoreEmailColumn(string header, IEnumerable<string> values, int index)
+    {
+        var normalizedHeader = NormalizeKey(header);
+        var exactAlias = EmailAliases.Any(alias => NormalizeKey(alias) == normalizedHeader);
+        var hasKeyword = EmailHeaderKeywords.Any(keyword => normalizedHeader.Contains(NormalizeKey(keyword), StringComparison.Ordinal));
+        var hasNegativeKeyword = EmailHeaderNegativeKeywords.Any(keyword => normalizedHeader.Contains(NormalizeKey(keyword), StringComparison.Ordinal));
+        var samples = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Take(50)
+            .ToList();
+        var validCount = samples.Count(value => EmailValueRegex.IsMatch(value));
+        var validRatio = samples.Count == 0 ? 0d : (double)validCount / samples.Count;
+        var eligible = exactAlias ||
+            (!hasNegativeKeyword && hasKeyword && (samples.Count == 0 || validCount > 0 && validRatio >= 0.5d)) ||
+            (!hasNegativeKeyword && !hasKeyword && samples.Count >= 2 && validCount >= 2 && validRatio >= 0.8d);
+        var score = (exactAlias ? 1000 : 0)
+            + (hasKeyword ? 400 : 0)
+            + (int)Math.Round(validRatio * 400d, MidpointRounding.AwayFromZero)
+            + Math.Min(validCount, 20) * 5
+            - (hasNegativeKeyword ? 1000 : 0);
+        return new EmailColumnScore(header, index, exactAlias, eligible, score);
+    }
+
     private static bool ParseBoolean(string value) =>
         value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
         value.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
@@ -413,7 +493,7 @@ public sealed class PackageImporter
         value == "1";
 
     private static string NormalizeKey(string key) => new(key
-        .Where(character => character is not '_' and not '-' && !char.IsWhiteSpace(character))
+        .Where(char.IsLetterOrDigit)
         .Select(char.ToLowerInvariant)
         .ToArray());
 
@@ -421,7 +501,7 @@ public sealed class PackageImporter
     {
         var normalized = NormalizeKey(key);
         if (NameAliases.Any(alias => NormalizeKey(alias) == normalized)) return "姓名";
-        if (EmailAliases.Any(alias => NormalizeKey(alias) == normalized)) return "邮箱";
+        if (IsLikelyEmailHeader(key)) return "邮箱";
         if (RoleAliases.Any(alias => NormalizeKey(alias) == normalized)) return "目标岗位";
         if (ReviewAliases.Any(alias => NormalizeKey(alias) == normalized)) return "审核状态";
         if (SubjectAliases.Any(alias => NormalizeKey(alias) == normalized)) return "邮件主题";
@@ -440,11 +520,23 @@ public sealed class PackageImporter
     private static bool IsDefaultVisible(string key)
     {
         var normalized = NormalizeKey(key);
-        return NameAliases.Concat(EmailAliases).Concat(RoleAliases).Concat(ReviewAliases)
+        return NameAliases.Concat(RoleAliases).Concat(ReviewAliases)
             .Any(alias => NormalizeKey(alias) == normalized) ||
+            IsLikelyEmailHeader(key) ||
             OrganizationAliases.Any(alias => NormalizeKey(alias) == normalized) ||
             normalized is "country" or "国家" or "国家地区";
     }
+
+    private static bool IsLikelyEmailHeader(string header)
+    {
+        var normalizedHeader = NormalizeKey(header);
+        if (EmailAliases.Any(alias => NormalizeKey(alias) == normalizedHeader)) return true;
+        var hasKeyword = EmailHeaderKeywords.Any(keyword => normalizedHeader.Contains(NormalizeKey(keyword), StringComparison.Ordinal));
+        var hasNegativeKeyword = EmailHeaderNegativeKeywords.Any(keyword => normalizedHeader.Contains(NormalizeKey(keyword), StringComparison.Ordinal));
+        return hasKeyword && !hasNegativeKeyword;
+    }
+
+    private sealed record EmailColumnScore(string Header, int Index, bool ExactAlias, bool Eligible, int Score);
 
     private static IReadOnlyList<List<string>> ParseCsv(string text)
     {
